@@ -1,0 +1,859 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+library(readxl)
+library(writexl)
+library(Seurat)
+library(patchwork)
+library(gridExtra)
+library(msigdbr)
+library(fgsea)
+library(MAST)
+library(enrichplot)
+library(reshape2)
+library(RColorBrewer)
+
+#setwd("/Users/pbajpai/Documents/KIT/Kit_10x/")
+source('helper_functions.R')
+source('/Users/pbajpai/Documents/Rthemes/theme_publication.R')
+```
+
+```{r loadRdata}
+#lung9s2 <- readRDS("rds_obs/lung9s2_newannotation.rds")
+#Idents(lung9s2) <- "Group"
+
+lung9s3 <- readRDS("rds_obs/lung9s3_newannotation.rds")
+Idents(lung9s3) <- "Group"
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "Rv", "Hip1"))
+lung9s3$label.main_new <- factor(lung9s3$label.main_new, levels = c("AM", "IM", "Neutrophils", "DC", "Monocytes", "CD4 T Cells", "CD8 T Cells", "Tgd", "B cells", "NK cells", "NKT","ILC", "Endothelial cells", "Fibroblasts", "Epithelial cells"))
+
+lung9s3$Group <- gsub("Rv", "WT Mtb", lung9s3$Group)
+lung9s3$Group <- gsub("Hip1", "hip1 Mut", lung9s3$Group)
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "WT Mtb", "hip1 Mut"))
+
+lung9s3$label.main_new2 <- lung9s3$label.main_new
+lung9s3$label.main_new2 <- gsub("AM", "1-AM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("IM", "2-IM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Neutrophils", "3-Neutrophils", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("DC", "4-DC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Monocytes", "5-Monocytes", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD4 T Cells", "6-CD4 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD8 T Cells", "7-CD8 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Tgd", "8-Tgd", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("B cells", "9-B cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NK cells", "10-NK cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NKT", "11-NKT", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("ILC", "12-ILC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Endothelial cells", "13-Endothelial cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Fibroblasts", "14-Fibroblasts", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Epithelial cells", "15-Epithelial cells", lung9s3$label.main_new2)
+
+lung9s3$label.main_new2 <- factor(lung9s3$label.main_new2, levels = c("1-AM", "2-IM", "3-Neutrophils", "4-DC", "5-Monocytes", "6-CD4 T Cells", "7-CD8 T Cells", "8-Tgd", "9-B cells", "10-NK cells", "11-NKT","12-ILC", "13-Endothelial cells", "14-Fibroblasts", "15-Epithelial cells"))
+```
+
+```{r}
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+```
+
+```{r}
+macro <- subset(lung9s3, subset = label.main == "Macrophages")
+macro <- DietSeurat(macro)
+#redo normalizations and clustering 
+macro <- NormalizeData(macro,  verbose = T, normalization.method = "RC")
+
+out <- macro[['RNA']]@data
+out <- as.data.frame(as.matrix(out))
+out <- out %>% rownames_to_column("Gene Sybmol")
+#write.table(out, "Compass_scrnaseq/expression_macro_Dec52024.tsv", row.names = F, quote = F, sep = "\t")
+#write.table(out, "~/Documents/KIT/Kit_10x/Compass_ScRNAseq/expression_macro_Dec52024.tsv", quote = F, sep = "\t", row.names = F)
+```
+
+#read macro UMAP from python adata file
+```{r}
+macro_adata <- readRDS("velocyto_files/macro_adata_aug262024.rds")
+```
+
+#read mono and tcell seurat data for downstream analysis
+```{r}
+mono <- readRDS("rds_obs/mono_seuratobject_Jan172025.rds")
+DimPlot(mono, group.by = "label.subset")
+
+tcell <- readRDS("rds_obs/tcell_seuratobject_Jan172025.rds")
+DimPlot(tcell, group.by = "label.subset")
+```
+
+#read mono data for compass run
+```{r}
+mono <- subset(lung9s3, subset = label.main == "Monocytes")
+mono <- DietSeurat(mono)
+mono <- NormalizeData(mono,  verbose = T, normalization.method = "RC")
+out <- mono[['RNA']]@data
+out <- as.data.frame(as.matrix(out))
+out <- out %>% rownames_to_column("Gene Sybmol")
+write.table(out, "Compass_scrnaseq/expression_mono_Dec192024.tsv", row.names = F, quote = F, sep = "\t")
+```
+
+#read tcell data for compass run
+```{r}
+tcell <- subset(lung9s3, subset = label.main == "T cells")
+tcell <- DietSeurat(tcell)
+tcell <- NormalizeData(tcell,  verbose = T, normalization.method = "RC")
+out <- tcell[['RNA']]@data
+out <- as.data.frame(as.matrix(out))
+out <- out %>% rownames_to_column("Gene Sybmol")
+write.table(out, "Compass_scrnaseq/expression_tcell_Jan032025.tsv", row.names = F, quote = F, sep = "\t")
+```
+
+#read all data: split data into groups and save, because micropooling doesnt work with multiple groups combined
+```{r}
+lung9s3_fil <- subset(lung9s3, subset = label.main_new != "Endothelial cells")
+lung9s3_fil <- DietSeurat(lung9s3_fil)
+lung9s3_fil <- NormalizeData(lung9s3_fil,  verbose = T, normalization.method = "RC")
+lung9s3_fil_hip1 <- subset(lung9s3_fil, subset = Group == "hip1 Mut")
+out <- lung9s3_fil_hip1[['RNA']]@data
+out <- as.data.frame(as.matrix(out))
+out <- out %>% rownames_to_column("Gene Sybmol")
+write.table(out, "Compass_scrnaseq/expression_lung9s3noendo_hip1_Feb2025.tsv", row.names = F, quote = F, sep = "\t")
+lung9s3_fil_rv <- subset(lung9s3_fil, subset = Group == "WT Mtb")
+out <- lung9s3_fil_rv[['RNA']]@data
+out <- as.data.frame(as.matrix(out))
+out <- out %>% rownames_to_column("Gene Sybmol")
+write.table(out, "Compass_scrnaseq/expression_lung9s3noendo_rv_Feb2025.tsv", row.names = F, quote = F, sep = "\t")
+
+```
+#compass data 
+```{r}
+fildat <- subset(lung9s3, subset = label.main %in% c("B cells", "Fibroblasts", "NK cells", "ILC", "Epithelial cells", "Neutrophils", "DC", "NKT", "Tgd"))
+fildat <- DietSeurat(fildat)
+fildat <- NormalizeData(fildat,  verbose = T, normalization.method = "RC")
+out <- fildat[['RNA']]@data
+out <- as.data.frame(as.matrix(out))
+out <- out %>% rownames_to_column("Gene Sybmol")
+write.table(out, "Compass_scrnaseq/expression_Bcell_fibro_NK_ILC_Epi_Neu_DC_NKT_Tgd_Feb2025.tsv", row.names = F, quote = F, sep = "\t")
+```
+
+
+
+#Load compass files
+```{r}
+recon_metadata <- read.csv("Compass_scrnaseq/rxn_md.csv")
+
+reaction_penalties_macro <- read.table("Compass_scrnaseq/reaction_panalties_macro_Dec820204.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_macro) <- reaction_penalties_macro[1,]
+reaction_penalties_macro <- reaction_penalties_macro[-1, ]
+reaction_penalties_macro <- reaction_penalties_macro %>% rownames_to_column("rxn_code")
+
+reaction_penalties_mono <- read.table("Compass_scrnaseq/reaction_panalties_mono_Jan032025.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_mono) <- reaction_penalties_mono[1,]
+reaction_penalties_mono <- reaction_penalties_mono[-1, ]
+reaction_penalties_mono <- reaction_penalties_mono %>% rownames_to_column("rxn_code")
+
+reaction_penalties_tcell <- read.table("Compass_scrnaseq/reaction_panelties_tcell_Jan13.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_tcell) <- reaction_penalties_tcell[1,]
+reaction_penalties_tcell <- reaction_penalties_tcell[-1, ]
+reaction_penalties_tcell <- reaction_penalties_tcell %>% rownames_to_column("rxn_code")
+
+reaction_penalties_others <- read.table("Compass_scrnaseq/reaction_panalties_Bcell_fibro_NK_ILC_Epi_Neu_DC_NKT_Tgd_Mar2025.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_others) <- reaction_penalties_others[1,]
+reaction_penalties_others <- reaction_penalties_others[-1, ]
+reaction_penalties_others <- reaction_penalties_others %>% rownames_to_column("rxn_code")
+
+reaction_penalties <- Reduce(function(x,y)merge(x, y, by = "rxn_code"), list(reaction_penalties_macro, reaction_penalties_mono, reaction_penalties_tcell, reaction_penalties_others))
+reaction_penalties <- reaction_penalties %>% column_to_rownames("rxn_code")
+reaction_penalties <- reaction_penalties %>% mutate_all(as.numeric)
+```
+
+
+```{r}
+get_reaction_consistencies <- function(compass_reaction_penalties, min_range = 1e-3) {
+  # Converts the raw penalties outputs of compass into scores per reactions where higher numbers indicate more activity
+  df <- -log(compass_reaction_penalties + 1)
+  df <- df[apply(df, 1, max) - apply(df, 1, min) >= min_range, ]
+  df <- df - min(df)
+  return(df)
+}
+```
+
+```{r}
+reaction_consistencies <- get_reaction_consistencies(reaction_penalties)
+```
+
+#Barcode features
+```{r}
+barcode_fil <- colnames(reaction_consistencies)
+macro_metadata <- macro_adata@meta.data
+macro_metadata <- macro_metadata[c("barcode_orig","SampleID", "Group", "label_subset")]
+macro_metadata <- macro_metadata %>% rownames_to_column("Barcode")
+reaction_barcode_metadata <- macro_metadata[macro_metadata$barcode_orig %in% barcode_fil,]
+barcode_hip1 <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "hip1 Mut",]$barcode_orig
+barcode_WT <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "WT Mtb",]$barcode_orig
+```
+
+#Barcode features
+```{r}
+barcode_fil <- colnames(reaction_consistencies)
+mono_metadata <- mono@meta.data
+mono_metadata <- mono_metadata %>% rownames_to_column("barcode_orig")
+mono_metadata <- mono_metadata[c("barcode_orig","SampleID", "Group", "label.subset")]
+reaction_barcode_metadata <- mono_metadata[mono_metadata$barcode_orig %in% barcode_fil,]
+barcode_hip1 <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "hip1 Mut",]$barcode_orig
+barcode_WT <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "WT Mtb",]$barcode_orig
+```
+
+#Barcode features
+```{r}
+barcode_fil <- colnames(reaction_consistencies)
+tcell_metadata <- tcell@meta.data
+tcell_metadata <- tcell_metadata %>% rownames_to_column("barcode_orig")
+tcell_metadata <- tcell_metadata[c("barcode_orig","SampleID", "Group", "label.subset")]
+reaction_barcode_metadata <- tcell_metadata[tcell_metadata$barcode_orig %in% barcode_fil,]
+barcode_hip1 <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "hip1 Mut",]$barcode_orig
+barcode_WT <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "WT Mtb",]$barcode_orig
+```
+
+#Barcode features
+```{r}
+barcode_fil <- colnames(reaction_consistencies)
+lung9s3_metadata <- lung9s3@meta.data
+lung9s3_metadata <- lung9s3_metadata[c("SampleID", "Group", "label.main_new")]
+lung9s3_metadata <- lung9s3_metadata %>% rownames_to_column("barcode_orig")
+reaction_barcode_metadata <- lung9s3_metadata[lung9s3_metadata$barcode_orig %in% barcode_fil,]
+barcode_hip1 <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "hip1 Mut",]$barcode_orig
+barcode_WT <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "WT Mtb",]$barcode_orig
+```
+
+# unpaired Wilcoxon rank-sum test 
+```{r}
+get_pvalues <- function(compass_reaction_consistencies, cellmetadata, hipbarcodes, WTbarcodes){
+  library(effectsize)
+  wilcox_results <- apply(compass_reaction_consistencies, 1, function(x){
+    wilcoxtest <- wilcox.test(x[names(x) %in% hipbarcodes], x[names(x) %in% WTbarcodes])$p.value
+  })
+  wilcox_results <- data.frame("rxn_code" = names(wilcox_results), wilcox_results)
+  cohensd_results <- apply(compass_reaction_consistencies, 1, function(x){
+    cohensd <- cohens_d(x[names(x) %in% hipbarcodes], x[names(x) %in% WTbarcodes])$Cohens_d
+  })
+  cohensd_results <- data.frame("rxn_code" = names(cohensd_results), cohensd_results)
+  
+  #fold change for limma
+  library(limma)
+  mydesign <- cbind(cellmetadata[cellmetadata$Group != "Uninfected",]$barcode_orig, as.character(cellmetadata[cellmetadata$Group != "Uninfected",]$Group))
+  mydata <- compass_reaction_consistencies[,colnames(compass_reaction_consistencies) %in% mydesign[,1]]
+  mydesign[,1] <- 1
+  mydesign[,2] <- as.numeric(factor(mydesign[,2], levels = c("WT Mtb","hip1 Mut")))
+  mydesign <- apply(mydesign, 2, as.numeric)
+  fit <- lmFit(mydata, mydesign)
+  fit <- eBayes(fit)
+  mytopt <- topTable(fit, coef=2, number = nrow(compass_reaction_consistencies))
+  mytopt <- mytopt %>% rownames_to_column("rxn_code")
+  mytopt <- mytopt[c("rxn_code", "logFC")]
+  out <- Reduce(function(x, y) merge(x,y, by = "rxn_code"), list(wilcox_results, cohensd_results, mytopt))
+  return(out)
+}
+
+wilcox_out <- get_pvalues(reaction_consistencies, cellmetadata = reaction_barcode_metadata, hipbarcodes = barcode_hip1, WTbarcodes = barcode_WT)
+wilcox_out$padj <- p.adjust(wilcox_out$wilcox_results, method = "fdr")
+wilcox_out$rxn_code_nodirection <- sapply(wilcox_out$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+```
+
+# Next we join the metadata to the reactions in a new dataframe W, so that we can filter out non-core reactions. More specifically, we remove reactions with confidence other than 0 or 4 (4 = most confident; 0 = unassigned confidence)
+```{r}
+reaction_combined <- merge(recon_metadata, wilcox_out, by = "rxn_code_nodirection")
+reaction_combined <- reaction_combined[reaction_combined$rxn_confidence %in% c("0", "4"),]
+reaction_combined <- reaction_combined[!is.na(reaction_combined$rxn_EC_number),]
+reaction_combined <- reaction_combined[reaction_combined$rxn_EC_number != "N/A",]
+reaction_combined$ismito <- ifelse(grepl("\\[m]", reaction_combined$rxn_formula), "yes", "no")
+```
+
+#save data
+```{r}
+write_xlsx(reaction_combined, "Compass_scrnaseq/Macro_compassresults.xlsx")
+write_xlsx(reaction_combined, "Compass_scrnaseq/Mono_compassresults.xlsx")
+write_xlsx(reaction_combined, "Compass_scrnaseq/Tcell_compassresults.xlsx")
+write_xlsx(reaction_combined, "Compass_scrnaseq/Lung9s3_compassresults.xlsx")
+```
+
+#First figure: volcano 
+```{r}
+plotdat <- reaction_combined
+
+#simplify labels
+plotdat$subsystem_simple <- plotdat$subsystem
+plotdat$subsystem_simple[!plotdat$subsystem_simple %in% c("Fatty acid oxidation", "Nucleotide interconversion", "Valine, leucine, and isoleucine metabolism", "Glycolysis/gluconeogenesis", "Tyrosine metabolism", "Pentose phosphate pathway", "Pyrimidine catabolism", "Citric acid cycle", "Glycine, serine, alanine and threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Glutathione metabolism", "Galactose metabolism", "Fructose and mannose metabolism", "Oxidative phosphorylation", "beta-Alanine metabolism")] <- "Others"
+plotdat$subsystem_simple[plotdat$subsystem_simple %in% c( "Valine, leucine, and isoleucine metabolism", "Tyrosine metabolism", "Glycine, serine, alanine and threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Glutathione metabolism", "beta-Alanine metabolism")] <- "Amino-acid metabolism"
+plotdat$subsystem_simple[plotdat$subsystem_simple %in% c("Galactose metabolism", "Fructose and mannose metabolism")] <- "Sugar metabolism"
+
+plotdat$subsystem_simple <- factor(plotdat$subsystem_simple, levels = c("Fatty acid oxidation", "Citric acid cycle",  "Oxidative phosphorylation", "Glycolysis/gluconeogenesis", "Pentose phosphate pathway", "Pyrimidine catabolism", "Amino-acid metabolism", "Sugar metabolism", "Nucleotide interconversion","Others"))
+#add labels for important reactions
+mylabs <- c("Beta oxidation of fatty acid", "citrate synthase", "carnitine O-palmitoyltransferase", "acetyl-CoA C-acetyltransferase", "glucose-6-phosphate isomerase", "NADH dehydrogenase, mitochondrial", "dTTP nucleotidohydrolase Pyrimidine metabolism EC:3.6.1.39")
+plotdat$labels <- plotdat$rxn_name_long
+plotdat$labels[!plotdat$labels %in% c("Beta oxidation of fatty acid", "citrate synthase", "carnitine O-palmitoyltransferase", "acetyl-CoA C-acetyltransferase", "glucose-6-phosphate isomerase", "NADH dehydrogenase, mitochondrial", "dTTP nucleotidohydrolase Pyrimidine metabolism EC:3.6.1.39", "Oxidative phosphorylation")] = ""
+plotdat$labels[grep("Pyrimidine", plotdat$labels)] <- "Pyrimidine metabolism"
+plotdat$labels[duplicated(plotdat$labels)] <- ""
+
+#remove others
+plotdat <- plotdat[plotdat$subsystem_simple != "Others",]
+
+set.seed(101010)
+ggplot(plotdat, aes(x = cohensd_results, y = -log10(padj))) + geom_point(aes(color = subsystem_simple), alpha = 0.8) + geom_text_repel(aes(label = labels), max.overlaps = Inf, min.segment.length = 1) + geom_hline(yintercept = -log10(0.05), linetype = "dashed") + geom_vline(xintercept = 0, linetype = "dashed") + xlim(-0.281, 0.281) + ylab("-log10 adjusted p") + xlab("Cohens'd") + scale_color_manual(values = c(cols[1:9], "grey80")) + theme_Publication() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.text = element_text(size = 10)) + guides(color=guide_legend(title="", nrow = 3, byrow = T))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_mono_simplesubsytems_volcano_colored_and_labeled.pdf", width = 7, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_tcell_simplesubsytems_volcano_colored_and_labeled.pdf", width = 7, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/15.Mar2025-PB/compass_lung9s3_simplesubsytems_volcano_colored_and_labeled.pdf", width = 7, height = 7, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/23.Nov2025-PB/compass_macro_simplesubsytems_volcano_colored_and_labeled.pdf", width = 7, height = 7, units = "in")
+```
+
+#select the top p-value and cohens'd from previous plot
+```{r}
+plotdat_fil <- plotdat[plotdat$cohensd_results > 0.1 & plotdat$padj < 10e-3,]
+plotdat_fil <- plotdat_fil %>% group_by(subsystem) %>% summarise(freq = n()) %>% mutate(perc = (freq/sum(freq))*100)
+
+#reduce to 15 variables to make it easier to color them
+plotdat_fil <- plotdat_fil[plotdat_fil$freq > 1,]
+plotdat_fil <- plotdat_fil[order(plotdat_fil$freq, decreasing = T),]
+plotdat_fil$subsystem <- factor(plotdat_fil$subsystem, levels = plotdat_fil$subsystem)
+
+p1 <- ggplot(plotdat_fil, aes(x = "subystem", y = perc, fill = subsystem)) + geom_bar(stat = "identity", position = position_fill(reverse = T)) + coord_polar(theta = "y") + scale_fill_manual(values = c(cols, "black", "grey90")) + theme_void() + #theme(legend.position = "none") + 
+  guides(fill=guide_legend(nrow=6,byrow=TRUE)) + theme(legend.title = element_blank())
+p1
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_subsytem_legend.pdf", p1, width = 8, height = 2, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_pie_subsystem.pdf", width = 6, height = 6, units = "in")
+
+#use simple subsytem
+plotdat_fil <- plotdat[plotdat$cohensd_results > 0.1 & plotdat$padj < 10e-3,]
+plotdat_fil$subsystem_simple <- plotdat_fil$subsystem
+plotdat_fil$subsystem_simple <- as.character(plotdat_fil$subsystem_simple)
+plotdat_fil$subsystem_simple[plotdat_fil$subsystem_simple %in% c( "Valine, leucine, and isoleucine metabolism", "Tyrosine metabolism", "Glycine, serine, alanine and threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Glutathione metabolism", "beta-Alanine metabolism")] <- "Amino-acid metabolism"
+plotdat_fil$subsystem_simple[plotdat_fil$subsystem_simple %in% c("Galactose metabolism", "Fructose and mannose metabolism")] <- "Sugar metabolism"
+plotdat_fil <- plotdat_fil %>% group_by(subsystem_simple) %>% summarise(freq = n()) %>% mutate(perc = (freq/sum(freq))*100)
+plotdat_fil <- plotdat_fil[plotdat_fil$freq > 1,]
+plotdat_fil <- plotdat_fil[order(plotdat_fil$freq, decreasing = T),]
+plotdat_fil$subsystem_simple <- factor(plotdat_fil$subsystem_simple, levels = plotdat_fil$subsystem_simple)
+
+p1 <- ggplot(plotdat_fil, aes(x = "subystem", y = perc, fill = subsystem_simple)) + geom_bar(stat = "identity", position = position_fill(reverse = T)) + coord_polar(theta = "y") + scale_fill_manual(values = c(cols, "black", "grey90")) + theme_void() + theme(legend.position = "bottom") +
+  guides(fill=guide_legend(ncol = 2,byrow=TRUE)) + theme(legend.title = element_blank())
+
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_subsytem_simple_legend.pdf", p1, width = 6, height = 1.5, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/compass_subsytem_simple_legend.pdf", p1, width = 5, height = 2, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_pie_subsystemsimple.pdf", width = 6, height = 6, units = "in")
+
+
+```
+
+
+#Second figure: dotplot 
+```{r}
+plotdat <- reaction_combined
+plotdat <- plotdat[plotdat$subsystem %in% c("Fatty acid oxidation", "Oxidative phosphorylation", "Valine, leucine, and isoleucine metabolism", "Glycolysis/gluconeogenesis", "Tyrosine metabolism", "Pentose phosphate pathway", "Pyrimidine catabolism", "Citric acid cycle", "Purine catabolism", "Eicosanoid metabolism", "Glycine, serine, alanine and threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Glutathione metabolism", "NAD metabolism", "CoA synthesis", "Alanine and aspartate metabolism", "beta-Alanine metabolism"),]
+plotdat$subsystem2 <- stringr::str_wrap(plotdat$subsystem, width = 25)
+
+plotdat$group <- ifelse(plotdat$padj < 0.05 & plotdat$cohensd_results > 0, "Up", ifelse(plotdat$cohensd_results < 0, "Down", "NS"))
+plotdat$group <- factor(plotdat$group, levels = c("Up", "Down", "NS"))
+plotdat$subsystem2 <- factor(plotdat$subsystem2, levels = rev(c("Fatty acid oxidation", "Oxidative phosphorylation", "Valine, leucine, and\nisoleucine metabolism",  "Glycolysis/gluconeogenesis", "Tyrosine metabolism", "Pentose phosphate pathway", "Citric acid cycle", "Eicosanoid metabolism", "Glycine, serine, alanine\nand threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline\nMetabolism", "Tryptophan metabolism", "Glutathione metabolism", "NAD metabolism", "CoA synthesis", "Alanine and aspartate\nmetabolism", "beta-Alanine metabolism", "Pyrimidine catabolism", "Purine catabolism")))
+plotdat <- plotdat[plotdat$group != "NS",]
+plotdat <- plotdat[!is.na(plotdat$subsystem),]
+
+ggplot(plotdat, aes(x = cohensd_results, y = subsystem2)) + geom_point(aes(color = group), alpha = 0.5, size = 1.2) + xlim(-0.3, 0.31) + xlab("Cohen's d") + geom_vline(xintercept = 0, linetype = "dashed") + theme_Publication() + scale_color_manual(values = c("#e31a1c",'#1f78b4',"grey")) + theme(legend.position = "bottom", axis.title.y = element_blank(), plot.margin = margin(0,0,0,0), legend.margin = margin(0,0,0,0), legend.title = element_blank()) + guides(color=guide_legend(byrow=TRUE, override.aes=list(size=8))) 
+
+ggsave("Compass_scrnaseq/filteredsubsytem_dotplot_macro.pdf", width = 6, height = 7, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_filteredsubsytem_dotplot_mono_cohensd.pdf", width = 6, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_filteredsubsytem_dotplot_tcell_cohensd.pdf", width = 6, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/15.Mar2025-PB/compass_filteredsubsytem_dotplot_lung9s3_cohensd.pdf", width = 6, height = 4, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/compass_filteredsubsytem_dotplot_lung9s3_cohensd.pdf", width = 4.5, height = 6, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/23.Nov2025-PB/compass_filteredsubsytem_dotplot_macro_cohensd.pdf", width = 5, height = 6, units = "in")
+```
+
+#Second figure: dotplot 
+```{r}
+plotdat <- reaction_combined
+plotdat <- plotdat[plotdat$subsystem %in% c("Fatty acid oxidation", "Oxidative phosphorylation", "Valine, leucine, and isoleucine metabolism", "Glycolysis/gluconeogenesis", "Tyrosine metabolism", "Pentose phosphate pathway", "Citric acid cycle",  "Glycine, serine, alanine and threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Glutathione metabolism", "Alanine and aspartate metabolism"),]
+
+plotdat$group <- ifelse(plotdat$padj <= 0.05 & plotdat$logFC > 0, "Up", ifelse(plotdat$logFC < 0, "Down", "NS"))
+plotdat$group <- factor(plotdat$group, levels = c("Up", "Down", "NS"))
+plotdat$subsystem <- factor(plotdat$subsystem, levels = rev(c("Fatty acid oxidation", "Oxidative phosphorylation", "Valine, leucine, and isoleucine metabolism", "Glycolysis/gluconeogenesis", "Tyrosine metabolism", "Pentose phosphate pathway", "Citric acid cycle",  "Glycine, serine, alanine and threonine metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Glutathione metabolism", "Alanine and aspartate metabolism")))
+plotdat <- plotdat[plotdat$group != "NS",]
+plotdat <- plotdat[!is.na(plotdat$subsystem),]
+
+ggplot(plotdat, aes(x = cohensd_results, y = subsystem)) + geom_point(aes(color = group, shape = ismito), alpha = 1, size = 1.5) + xlim(-0.281, 0.281) + xlab("Cohen's d") + geom_vline(xintercept = 0, linetype = "dashed") + theme_Publication() + scale_color_manual(values = c("#e31a1c",'#1f78b4',"grey")) + scale_shape_manual(values = c(1,2)) + theme(legend.position = "bottom", axis.title.y = element_blank(), axis.text = element_text(size = 12))
+
+ggsave("Compass_scrnaseq/filteredsubsytem_dotplot_macro.pdf", width = 6, height = 7, units = "in")
+ggsave("Compass_scrnaseq/filtered2subsytem_dotplot_macro.pdf", width = 8, height = 4, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_filteredsubsytem_dotplot_mono_cohensd.pdf", width = 6, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/compass_filteredsubsytem_dotplot_tcell_cohensd.pdf", width = 6, height = 7, units = "in")
+```
+
+#assign cell identities based on reaction scores
+```{r}
+amdata <- reaction_consistencies %>% rownames_to_column("rxn_code")
+amdata$rxn_code_nodirection <- sapply(amdata$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+amdata <- merge(amdata, recon_metadata, by = "rxn_code_nodirection")
+amdata <- amdata[amdata$rxn_confidence %in% c("0", "4"),]
+amdata <- amdata[!is.na(amdata$rxn_EC_number),]
+amdata <- amdata[amdata$rxn_EC_number != "N/A",]
+amdata <- melt(amdata, id.vars = c("rxn_code", "rxn_code_nodirection", "rxn_name_long", "subsystem", "ind_in_original_recon", "rxn_EC_number", "genes_associated_with_rxn", "rxn_formula", "rxn_confidence"))
+colnames(amdata)[colnames(amdata) == "variable"] <- "barcode_orig"
+amdata <- merge(amdata, macro_metadata, by = "barcode_orig")
+amdata$cell_group <- paste(amdata$label_subset, amdata$Group, sep = "_")
+
+amdata_list <- split(amdata, f = amdata$subsystem)
+
+plotlist <- lapply(amdata_list, function(x){
+  ggplot(x, aes(x = value, fill = cell_group)) + geom_density(alpha = 0.5) + theme_Publication() + scale_fill_manual(values = cols) + labs(title = unique(x$subsystem)) + theme(plot.title = element_text(hjust = 0.5))
+})
+
+ggsave(filename = "Compass_scrnaseq/allsubsytems_densitybygroup.pdf", plot = marrangeGrob(plotlist, nrow=2, ncol=1), width = 7, height = 8)
+```
+
+#Overlap onto the UMAP, split AM into subsets and then identify which subsets do what
+```{r}
+#no signficant changes between groups
+```
+
+#subset wise comparison of hip1 vs WT
+```{r}
+get_pvalues_bysubset <- function(compass_reaction_consistencies, cellmetadata, barcode_g1, barcode_g2){
+  library(effectsize)
+  wilcox_results <- apply(compass_reaction_consistencies, 1, function(x){
+    wilcoxtest <- wilcox.test(x[names(x) %in% barcode_g1], x[names(x) %in% barcode_g2])$p.value
+  })
+  wilcox_results <- data.frame("rxn_code" = names(wilcox_results), wilcox_results)
+  cohensd_results <- apply(compass_reaction_consistencies, 1, function(x){
+    cohensd <- cohens_d(x[names(x) %in% barcode_g1], x[names(x) %in% barcode_g2])$Cohens_d
+  })
+  cohensd_results <- data.frame("rxn_code" = names(cohensd_results), cohensd_results)
+  
+  #fold change for limma
+  library(limma)
+  mydesign <- cbind(cellmetadata[cellmetadata$Group != "Uninfected",]$barcode_orig, as.character(cellmetadata[cellmetadata$Group != "Uninfected",]$Group))
+  mydata <- compass_reaction_consistencies[,colnames(compass_reaction_consistencies) %in% mydesign[,1]]
+  mydesign[,1] <- 1
+  mydesign[,2] <- as.numeric(factor(mydesign[,2], levels = c("WT Mtb","hip1 Mut")))
+  mydesign <- apply(mydesign, 2, as.numeric)
+  fit <- lmFit(mydata, mydesign)
+  fit <- eBayes(fit)
+  mytopt <- topTable(fit, coef=2, number = nrow(compass_reaction_consistencies))
+  mytopt <- mytopt %>% rownames_to_column("rxn_code")
+  mytopt <- mytopt[c("rxn_code", "logFC")]
+  out <- Reduce(function(x, y) merge(x,y, by = "rxn_code"), list(wilcox_results, cohensd_results, mytopt))
+  return(out)
+}
+```
+
+#subset wise barecodes features
+```{r}
+barcode_fil <- colnames(reaction_consistencies)
+macro_metadata <- macro_adata@meta.data
+macro_metadata <- macro_metadata[c("barcode_orig","SampleID", "Group", "label_subset")]
+macro_metadata <- macro_metadata %>% rownames_to_column("Barcode")
+
+macro_subset_metadata <- split(macro_metadata, f = macro_metadata$label_subset)
+
+barcode_subset_hip1 <- lapply(macro_subset_metadata, function(x){
+  reaction_barcode_metadata <- x[x$barcode_orig %in% barcode_fil,]
+  barcode_hip1 <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "hip1 Mut",]$barcode_orig
+})
+barcode_subset_WT <- lapply(macro_subset_metadata, function(x){
+  reaction_barcode_metadata <- x[x$barcode_orig %in% barcode_fil,]
+  barcode_WT <- reaction_barcode_metadata[reaction_barcode_metadata$Group == "WT Mtb",]$barcode_orig
+})
+```
+
+
+```{r}
+#AM1
+wilcox_out_AM1 <- get_pvalues_bysubset(reaction_consistencies, cellmetadata = macro_subset_metadata$`AM 1`, barcode_g1 = barcode_subset_hip1$`AM 1`, barcode_g2 = barcode_subset_WT$`AM 1`)
+wilcox_out_AM1$padj <- p.adjust(wilcox_out_AM1$wilcox_results, method = "fdr")
+wilcox_out_AM1$rxn_code_nodirection <- sapply(wilcox_out_AM1$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+reaction_combined_AM1 <- merge(recon_metadata, wilcox_out_AM1, by = "rxn_code_nodirection")
+reaction_combined_AM1 <- reaction_combined_AM1[reaction_combined_AM1$rxn_confidence %in% c("0", "4"),]
+reaction_combined_AM1 <- reaction_combined_AM1[!is.na(reaction_combined_AM1$rxn_EC_number),]
+reaction_combined_AM1 <- reaction_combined_AM1[reaction_combined_AM1$rxn_EC_number != "N/A",]
+
+#AM2
+wilcox_out_AM2 <- get_pvalues_bysubset(reaction_consistencies, cellmetadata = macro_subset_metadata$`AM 2`, barcode_g1 = barcode_subset_hip1$`AM 2`, barcode_g2 = barcode_subset_WT$`AM 2`)
+wilcox_out_AM2$padj <- p.adjust(wilcox_out_AM2$wilcox_results, method = "fdr")
+wilcox_out_AM2$rxn_code_nodirection <- sapply(wilcox_out_AM2$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+reaction_combined_AM2 <- merge(recon_metadata, wilcox_out_AM2, by = "rxn_code_nodirection")
+reaction_combined_AM2 <- reaction_combined_AM2[reaction_combined_AM2$rxn_confidence %in% c("0", "4"),]
+reaction_combined_AM2 <- reaction_combined_AM2[!is.na(reaction_combined_AM2$rxn_EC_number),]
+reaction_combined_AM2 <- reaction_combined_AM2[reaction_combined_AM2$rxn_EC_number != "N/A",]
+
+#AM3
+wilcox_out_AM3 <- get_pvalues_bysubset(reaction_consistencies, cellmetadata = macro_subset_metadata$`AM 3`, barcode_g1 = barcode_subset_hip1$`AM 3`, barcode_g2 = barcode_subset_WT$`AM 3`)
+wilcox_out_AM3$padj <- p.adjust(wilcox_out_AM3$wilcox_results, method = "fdr")
+wilcox_out_AM3$rxn_code_nodirection <- sapply(wilcox_out_AM3$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+reaction_combined_AM3 <- merge(recon_metadata, wilcox_out_AM3, by = "rxn_code_nodirection")
+reaction_combined_AM3 <- reaction_combined_AM3[reaction_combined_AM3$rxn_confidence %in% c("0", "4"),]
+reaction_combined_AM3 <- reaction_combined_AM3[!is.na(reaction_combined_AM3$rxn_EC_number),]
+reaction_combined_AM3 <- reaction_combined_AM3[reaction_combined_AM3$rxn_EC_number != "N/A",]
+
+#IM
+wilcox_out_IM <- get_pvalues_bysubset(reaction_consistencies, cellmetadata = macro_subset_metadata$IM, barcode_g1 = barcode_subset_hip1$IM, barcode_g2 = barcode_subset_WT$IM)
+wilcox_out_IM$padj <- p.adjust(wilcox_out_IM$wilcox_results, method = "fdr")
+wilcox_out_IM$rxn_code_nodirection <- sapply(wilcox_out_IM$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+reaction_combined_IM <- merge(recon_metadata, wilcox_out_IM, by = "rxn_code_nodirection")
+reaction_combined_IM <- reaction_combined_IM[reaction_combined_IM$rxn_confidence %in% c("0", "4"),]
+reaction_combined_IM <- reaction_combined_IM[!is.na(reaction_combined_IM$rxn_EC_number),]
+reaction_combined_IM <- reaction_combined_IM[reaction_combined_IM$rxn_EC_number != "N/A",]
+```
+
+#Get list of reaction to correlate with metabolomics data
+```{r}
+
+```
+
+
+# FAO subsystem
+```{r}
+ggplot(reaction_combined, aes(x = cohensd_results, y = -log10(wilcox_results))) + geom_point() + geom_hline(yintercept = -log10(0.05), linetype = "dashed")
+
+plot(density(reaction_combined$cohensd_results))
+
+plotlist <- split(reaction_combined, f = reaction_combined$subsystem)
+plotlist <- plotlist[sapply(plotlist, function(x)nrow(x) >= 10)]
+plotlist <- lapply(plotlist, function(x){
+  ggplot(x, aes(x = cohensd_results, y = -log10(padj))) + geom_point() + labs(title = unique(x$subsystem)) + xlim(-0.2, 0.34) + geom_hline(yintercept = -log10(0.05), linetype = "dashed") + theme(plot.title = element_text(hjust = 0.5))
+})
+ggsave(filename = "Compass_scrnaseq/allsubsytems_volcano.pdf", plot = marrangeGrob(plotlist, nrow=1, ncol=1), width = 8, height = 8)
+```
+
+```{r}
+dec_coa <- plotdat[grep("decanoyl", plotdat$rxn_formula, ignore.case = T),]
+
+```
+
+#Label volcano plot for subsystems and crutial reactions, pyrimide in lower, FAO, amino acids in higher
+# overlay information on UMAP? divide cells by which reactions are most prevalant 
+# Run limma for fold change
+```{r}
+
+```
+
+#Micropooled global data
+#Load compass files
+```{r}
+recon_metadata <- read.csv("Compass_scrnaseq/rxn_md.csv")
+reaction_penalties_WT <- read.table("Compass_scrnaseq/reaction_panalties_lung9s3noendo_rv_Feb2025.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_WT) <- reaction_penalties_WT[1,]
+reaction_penalties_WT <- reaction_penalties_WT[-1, ]
+reaction_penalties_WT <- reaction_penalties_WT %>% mutate_all(as.numeric)
+colnames(reaction_penalties_WT) <- paste(colnames(reaction_penalties_WT), "WT", sep = "_")
+reaction_penalties_WT <- reaction_penalties_WT %>% rownames_to_column("Reaction")
+reaction_penalties_hip1 <- read.table("Compass_scrnaseq/reaction_panalties_lung9s3noendo_hip1_Feb2025.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_hip1) <- reaction_penalties_hip1[1,]
+reaction_penalties_hip1 <- reaction_penalties_hip1[-1, ]
+reaction_penalties_hip1 <- reaction_penalties_hip1 %>% mutate_all(as.numeric)
+colnames(reaction_penalties_hip1) <- paste(colnames(reaction_penalties_hip1), "hip1", sep = "_")
+reaction_penalties_hip1 <- reaction_penalties_hip1 %>% rownames_to_column("Reaction")
+reaction_penalties <- merge(reaction_penalties_WT, reaction_penalties_hip1, by = "Reaction")
+reaction_penalties <- reaction_penalties %>% column_to_rownames("Reaction")
+```
+
+#Load micropool data: this data is not needed for current analysis
+```{r}
+lung9s3_metadata <- lung9s3@meta.data
+lung9s3_metadata <- lung9s3_metadata[c("SampleID", "Group", "label.main_new")]
+lung9s3_metadata <- lung9s3_metadata %>% rownames_to_column("barcode_orig")
+micropools_WT <- read.csv("Compass_scrnaseq/micropools_lung9s3noendo_rv_Feb2025.tsv", sep = "\t", row.names = 1)
+micropools_WT <- micropools_WT %>% rownames_to_column("barcode_orig")
+micropools_WT <- merge(micropools_WT, lung9s3_metadata, by = "barcode_orig")
+micropools_hip1 <- read.csv("Compass_scrnaseq/micropools_lung9s3noendo_hip1_Feb2025.tsv", sep = "\t", row.names = 1)
+micropools_hip1 <- micropools_hip1 %>% rownames_to_column("barcode_orig")
+micropools_hip1 <- merge(micropools_hip1, lung9s3_metadata, by = "barcode_orig")
+```
+
+```{r}
+get_pvalues_micropools <- function(compass_reaction_consistencies, cellmetadata, hipbarcodes, WTbarcodes){
+  library(effectsize)
+  wilcox_results <- apply(compass_reaction_consistencies, 1, function(x){
+    wilcoxtest <- wilcox.test(x[names(x) %in% hipbarcodes], x[names(x) %in% WTbarcodes])$p.value
+  })
+  wilcox_results <- data.frame("rxn_code" = names(wilcox_results), wilcox_results)
+  cohensd_results <- apply(compass_reaction_consistencies, 1, function(x){
+    cohensd <- cohens_d(x[names(x) %in% hipbarcodes], x[names(x) %in% WTbarcodes])$Cohens_d
+  })
+  cohensd_results <- data.frame("rxn_code" = names(cohensd_results), cohensd_results)
+  
+  #fold change for limma
+  library(limma)
+  mydesign <- as.matrix(data.frame(rep("1", ncol(compass_reaction_consistencies)), gsub(".*_", "", colnames(compass_reaction_consistencies))))
+  mydata <- compass_reaction_consistencies
+  mydesign[,2] <- as.numeric(factor(mydesign[,2], levels = c("WT","hip1")))
+  mydesign <- apply(mydesign, 2, as.numeric)
+  fit <- lmFit(mydata, mydesign)
+  fit <- eBayes(fit)
+  mytopt <- topTable(fit, coef=2, number = nrow(compass_reaction_consistencies))
+  mytopt <- mytopt %>% rownames_to_column("rxn_code")
+  mytopt <- mytopt[c("rxn_code", "logFC")]
+  out <- Reduce(function(x, y) merge(x,y, by = "rxn_code"), list(wilcox_results, cohensd_results, mytopt))
+  return(out)
+}
+```
+
+```{r}
+reaction_consistencies <- get_reaction_consistencies(reaction_penalties)
+wilcox_out <- get_pvalues_micropools(reaction_consistencies, cellmetadata = lung9s3_metadata, hipbarcodes = colnames(reaction_consistencies)[grep("hip1", colnames(reaction_consistencies), ignore.case = T)], WTbarcodes = colnames(reaction_consistencies)[grep("WT", colnames(reaction_consistencies), ignore.case = T)])
+wilcox_out$padj <- p.adjust(wilcox_out$wilcox_results, method = "fdr")
+wilcox_out$rxn_code_nodirection <- sapply(wilcox_out$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+```
+
+# Next we join the metadata to the reactions in a new dataframe W, so that we can filter out non-core reactions. More specifically, we remove reactions with confidence other than 0 or 4 (4 = most confident; 0 = unassigned confidence)
+```{r}
+reaction_combined <- merge(recon_metadata, wilcox_out, by = "rxn_code_nodirection")
+reaction_combined <- reaction_combined[reaction_combined$rxn_confidence %in% c("0", "4"),]
+reaction_combined <- reaction_combined[!is.na(reaction_combined$rxn_EC_number),]
+reaction_combined <- reaction_combined[reaction_combined$rxn_EC_number != "N/A",]
+reaction_combined$ismito <- ifelse(grepl("\\[m]", reaction_combined$rxn_formula), "yes", "no")
+```
+
+#save data
+```{r}
+write_xlsx(reaction_combined, "Compass_scrnaseq/Macro_compassresults.xlsx")
+write_xlsx(reaction_combined, "Compass_scrnaseq/Mono_compassresults.xlsx")
+write_xlsx(reaction_combined, "Compass_scrnaseq/Tcell_compassresults.xlsx")
+write_xlsx(reaction_combined, "Compass_scrnaseq/Lung9s3_micropooled_hip1_vs_WT_compassresults_ver2.xlsx")
+```
+
+```{r}
+plotdat <- reaction_combined
+plotdat <- plotdat[plotdat$subsystem %in% c("Fatty acid oxidation", "Oxidative phosphorylation", "Nucleotide interconversion", "N-glycan synthesis", "Keratan sulfate degradation", "Bile acid synthesis", "Valine, leucine, and isoleucine metabolism", "Steroid metabolism", "Sphingolipid metabolism", "Glycolysis/gluconeogenesis", "Folate metabolism", "Glycerophospholipid metabolism", "Cholesterol metabolism", "Tyrosine metabolism", "Pentose phosphate pathway", "Pyrimidine catabolism", "Urea cycle", "Citric acid cycle", "Purine catabolism", "Eicosanoid metabolism", "Glycine, serine, alanine and threonine metabolism", "Inositol phosphate metabolism", "Fructose and mannose metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Aminosugar metabolism", "Starch and sucrose metabolism", "Glutathione metabolism", "NAD metabolism", "CoA synthesis", "Alanine and aspartate metabolism", "beta-Alanine metabolism"),]
+
+plotdat$group <- ifelse(plotdat$padj <= 0.05 & plotdat$logFC > 0, "Up", ifelse(plotdat$logFC < 0, "Down", "NS"))
+plotdat$group <- factor(plotdat$group, levels = c("Up", "Down", "NS"))
+plotdat$subsystem <- factor(plotdat$subsystem, levels = rev(c("Fatty acid oxidation", "Oxidative phosphorylation", "Nucleotide interconversion", "N-glycan synthesis", "Keratan sulfate degradation", "Bile acid synthesis", "Valine, leucine, and isoleucine metabolism", "Steroid metabolism", "Sphingolipid metabolism", "Glycolysis/gluconeogenesis", "Folate metabolism", "Glycerophospholipid metabolism", "Cholesterol metabolism", "Tyrosine metabolism", "Pentose phosphate pathway", "Urea cycle", "Citric acid cycle", "Eicosanoid metabolism", "Glycine, serine, alanine and threonine metabolism", "Inositol phosphate metabolism", "Fructose and mannose metabolism", "Glutamate metabolism", "Pyruvate metabolism", "Arginine and Proline Metabolism", "Tryptophan metabolism", "Aminosugar metabolism", "Starch and sucrose metabolism", "Glutathione metabolism", "NAD metabolism", "CoA synthesis", "Alanine and aspartate metabolism", "beta-Alanine metabolism", "Pyrimidine catabolism", "Purine catabolism")))
+plotdat <- plotdat[plotdat$group != "NS",]
+plotdat <- plotdat[!is.na(plotdat$subsystem),]
+
+ggplot(plotdat, aes(x = cohensd_results, y = subsystem)) + geom_point(aes(color = group, shape = ismito), alpha = 1, size = 1.2) + xlim(-0.281, 0.281) + xlab("Cohen's d") + geom_vline(xintercept = 0, linetype = "dashed") + theme_Publication() + scale_color_manual(values = c("#e31a1c",'#1f78b4',"grey")) + scale_shape_manual(values = c(1,2)) + theme(legend.position = "bottom", axis.title.y = element_blank())
+```
+
+```{r}
+library(scMetabolism)
+countexp.Seurat <- sc.metabolism.Seurat(obj = lung9s3, method = "AUCell", imputation = F, ncores = 9, metabolism.type = "KEGG")
+metabolism.matrix <- countexp.Seurat@assays$METABOLISM$score
+metabolism.matrix <- t(metabolism.matrix)
+rownames(metabolism.matrix) <- gsub("\\.", "-", rownames(metabolism.matrix))
+
+countexp.Seurat <- AddMetaData(countexp.Seurat, metadata = metabolism.matrix)
+#saveRDS(countexp.Seurat, "rds_data/balver2_scmetabolism_countexp_Apr2025.rds")
+countexp.Seurat <- readRDS("rds_data/balver2_scmetabolism_countexp_Apr2025.rds")
+
+pal <- wes_palette("Zissou1", 100, type = "continuous")
+FeaturePlot(am, features = "Oxidative phosphorylation", cols = pal, split.by = "hiv_timepoint")
+DotPlot(countexp.Seurat, features = c("Glycolysis / Gluconeogenesis", "Oxidative phosphorylation", "Citrate cycle (TCA cycle)"), group.by = "hiv_timepoint")
+```
+
+# test if metabolites info can be obtained from KEGG reaction ID
+```{r}
+library(KEGGREST)
+library(rmatio)
+
+org <- keggList("compound")
+
+test <- keggGet("1.1.1.27")
+test <- keggLink("reaction", "compound")
+
+recon <- read.mat("~/Downloads/Recon3D_301/Recon3DModel_301.mat")
+```
+
+
+```{r}
+metabolomics_dat <- sapply(excel_sheets("~/OneDrive - Emory/pbajpai/KIT/Metabolomics/mouse_2weeks/pathway_wise_metabolites_data_for_correalationheatmap_compedit.xlsx"), function(x)read_xlsx("~/OneDrive - Emory/pbajpai/KIT/Metabolomics/mouse_2weeks/pathway_wise_metabolites_data_for_correalationheatmap_compedit.xlsx", sheet = x))
+
+metabolomics_dat <- lapply(metabolomics_dat, function(x){
+  x <- x[!duplicated(x$value),]
+  x <- x %>% group_by(variable, Treatment) %>% summarise(meanAbundance = mean(value), .groups = "drop")
+  x$Treatment <- factor(x$Treatment, levels = c("WtMtb", "hip1 Mut"))
+  x <- split(x, f = x$Treatment)
+  x <- lapply(x, function(y){
+      y <- y[order(y$meanAbundance, decreasing = F),][1:5,]
+  })
+  x <- bind_rows(x)
+  x$Treatment <- as.character(x$Treatment)
+  x$Treatment[x$Treatment == "WtMtb"] <- "1WT Mtb"
+  x$Treatment[x$Treatment == "hip1 Mut"] <- "2hip1 Mut"
+  x$sampleID <- as.character(c(1:5, 1:5))
+  return(x)
+})
+metabolomics_dat <- bind_rows(metabolomics_dat, .id = "pathway")
+metabolomics_dat$variable <- NULL
+#metabolomics_dat <- metabolomics_dat[metabolomics_dat$variable %in% c("kl_220819_080.mzXML","kl_220819_038.mzXML","kl_220819_050.mzXML","kl_220819_062.mzXML","kl_220819_188.mzXML","kl_220819_206.mzXML"),]
+#metabolomics_dat$variable <- factor(metabolomics_dat$variable, levels = c("kl_220819_080.mzXML","kl_220819_038.mzXML","kl_220819_050.mzXML","kl_220819_062.mzXML","kl_220819_188.mzXML","kl_220819_206.mzXML"))
+metabolomics_dat <- tidyr::spread(metabolomics_dat, key = pathway, value = meanAbundance)
+#remove two rows
+set.seed(101010)
+to_keep <- c(sample(1:5, 3), sample(6:10, 3))
+metabolomics_dat <- metabolomics_dat[to_keep,]
+
+
+reaction_consistencies <- readRDS("rds_obs/reaction_consistencies_lung9s3_May2025.rds")
+reaction_consistencies <- reaction_consistencies %>% rownames_to_column("rxn_code_nodirection")
+reaction_consistencies$rxn_code_nodirection <- unname(sapply(reaction_consistencies$rxn_code_nodirection, function(x)str_sub(x, 1, nchar(x)-4)))
+reaction_consistencies <- merge(recon_metadata[c("rxn_code_nodirection", "subsystem")], reaction_consistencies, by = "rxn_code_nodirection")
+reaction_consistencies <- melt(reaction_consistencies, id.vars = c("rxn_code_nodirection", "subsystem"))
+reaction_consistencies <- reaction_consistencies[reaction_consistencies$subsystem %in% c("Glycine, serine, alanine and threonine metabolism", "Galactose metabolism", "Fructose and mannose metabolism", "beta-Alanine metabolism", "Valine, leucine, and isoleucine metabolism", "Glutamate metabolism", "Urea cycle", "Glycosphingolipid metabolism", "Aminosugar metabolism", "Tyrosine metabolism", "Fatty acid oxidation"),]
+#merge sample metadata
+samplemeta <- lung9s3@meta.data %>% select("SampleID", "Group") %>% rownames_to_column("variable")
+reaction_consistencies <- merge(samplemeta, reaction_consistencies, by = "variable")
+reaction_consistencies_mean <- reaction_consistencies %>% group_by(SampleID, Group, subsystem) %>% summarise(meanRecCon = mean(value))
+reaction_consistencies_mean$Group <- as.character(reaction_consistencies_mean$Group)
+reaction_consistencies_mean <- reaction_consistencies_mean[reaction_consistencies_mean$Group != "Uninfected",]
+reaction_consistencies_mean$Group <- ifelse(reaction_consistencies_mean$Group == "WT Mtb", "1WT Mtb","2hip1 Mut")
+reaction_consistencies_mean <- reaction_consistencies_mean[with(reaction_consistencies_mean, order(subsystem, Group, meanRecCon)),]
+#reaction_consistencies_mean$SampleID <- factor(reaction_consistencies_mean$SampleID, levels = c("5", "4", "6", "7", "9", "8"))
+reaction_consistencies_mean <- tidyr::spread(reaction_consistencies_mean, key = subsystem, value = meanRecCon)
+
+plotdat <- cbind(reaction_consistencies_mean, metabolomics_dat)
+plotdat <- cor(plotdat[,3:13], plotdat[,16:27])
+colnames(plotdat) <- gsub("\\..*", "", colnames(plotdat))
+rownames(plotdat) <- gsub("\\..*", "", rownames(plotdat))
+colnames(plotdat) <- c("Aminosugars metabolism", "Beta-Alanine metabolism", "Fructose and mannose metabolism", "Galactose metabolism", "Glutamate metabolism", "Glycine, serine, alanine and threonine metabolism", "Glycosphingolipid metabolism", "Saturated fatty acids beta-oxidation", "Sialic acid metabolism", "Tyrosine metabolism", "Urea cycle amino group metabolism", "Valine, leucine and isoleucine metabolism")
+plotdat <- melt(plotdat)
+plotdat$Var1 <- as.character(plotdat$Var1)
+plotdat$Var2 <- as.character(plotdat$Var2)
+plotdat$Var2[plotdat$Var2 == "Saturated fatty acids beta-oxidation"] <- "Fatty acid oxidation"
+plotdat <- plotdat[plotdat$Var2 != "Sialic acid metabolism",]
+plotdat <- lapply(split(plotdat, f = plotdat$Var1), function(x){
+  x$Var1 <- as.character(x$Var1)
+  x$Var2 <- as.character(x$Var2)
+  pattern <- gsub(" .*", "", unique(x$Var1))
+  x$value[grep(pattern, x$Var2, ignore.case = T, invert = T)] <- NA
+  return(x)
+})
+plotdat <- bind_rows(plotdat)
+
+plotdat$Var1 <- stringr::str_wrap(plotdat$Var1, width = 22)
+plotdat$Var2 <- stringr::str_wrap(plotdat$Var2, width = 30)
+ggplot(plotdat, aes(x = Var1, y = Var2, fill = value)) + geom_tile() + scale_fill_gradient2(low = "blue", mid = "white", high = "red", limits = c(0, 1), na.value = "#f0f0f0") + ylab("Metabolites pathway score") + xlab("Compass mean pathway score") + theme_Publication() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position = "right", legend.direction = "vertical", axis.text = element_text(size = 12), axis.title = element_text(size = 13), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)) + guides(fill=guide_legend(title="Cor"))
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/18.June2025-PB/correlation_heatmap.pdf", width = 9, height = 6, units = "in")
+
+
+
+```
+# Individual reactions info
+```{r}
+reaction_penalties_macro <- read.table("Compass_scrnaseq/reaction_panalties_macro_Dec820204.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_macro) <- reaction_penalties_macro[1,]
+reaction_penalties_macro <- reaction_penalties_macro[-1, ]
+reaction_penalties_macro <- reaction_penalties_macro %>% mutate_all(as.numeric)
+
+recon_metadata <- read.csv("Compass_scrnaseq/rxn_md.csv")
+
+get_reaction_consistencies <- function(compass_reaction_penalties, min_range = 1e-3) {
+  # Converts the raw penalties outputs of compass into scores per reactions where higher numbers indicate more activity
+  df <- -log(compass_reaction_penalties + 1)
+  df <- df[apply(df, 1, max) - apply(df, 1, min) >= min_range, ]
+  df <- df - min(df)
+  return(df)
+}
+reaction_consistencies_macro <- get_reaction_consistencies(reaction_penalties_macro)
+
+reaction_consistencies_meta <- reaction_consistencies_macro %>% rownames_to_column("rxn_code")
+reaction_consistencies_meta$rxn_code_nodirection <- sapply(reaction_consistencies_meta$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+reaction_consistencies_meta <- merge(recon_metadata, reaction_consistencies_meta, by = "rxn_code_nodirection")
+reaction_consistencies_meta <- reaction_consistencies_meta[reaction_consistencies_meta$rxn_confidence %in% c("0", "4"),]
+
+macro <- readRDS("rds_obs/macro_seuratobject_Jan172025.rds")
+samplemetadata <- macro@meta.data %>% select("SampleID","Group", "label.subset") %>% rownames_to_column("Barcode")
+
+#plotdat <- reaction_consistencies_meta[reaction_consistencies_meta$rxn_code %in% c("ATPS4m_pos", "ADK1m_pos", "FATP1t_neg", "GLCt1r_pos", "PYRt2m_pos", "PDHm_pos", "CSm_pos", "LINOFATPtc_pos"),]
+plotdat <- reaction_consistencies_meta[reaction_consistencies_meta$rxn_code %in% c("ATPS4m_pos", "PDHm_pos", "GLCt1r_pos"),]
+plotdat <- melt(plotdat, id.vars = c("rxn_code_nodirection", "rxn_name_long", "subsystem", "ind_in_original_recon", "rxn_EC_number", "genes_associated_with_rxn", "rxn_formula", "rxn_confidence", "rxn_code"))
+colnames(plotdat)[colnames(plotdat) == "variable"] <- "Barcode"
+plotdat <- merge(plotdat, samplemetadata, by = "Barcode")
+#plotdat <- plotdat[plotdat$Group != "Uninfected",]
+plotdat <- plotdat[plotdat$label.subset %in% c("AM 1", "AM 3"),]
+#plotdat <- plotdat[plotdat$SampleID %in% c("6", "9"),]
+
+#comparisons <- list(c("Uninfected", "WT Mtb"), c("WT Mtb", "hip1 Mut"), c("Uninfected", "hip1 Mut"))
+comparisons <- list(c("WT Mtb", "hip1 Mut"))
+ggplot(plotdat, aes(x = Group, y = value, fill = Group)) + geom_violin() + geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) + ggpubr::stat_compare_means(comparisons = comparisons) + facet_wrap(rxn_code~`label.subset`, ncol = 2, scales = "free")+ labs(y = "Reaction Score") + scale_x_discrete(labels = c("WT Mtb", "hip1 mut")) + scale_fill_manual(values = c("#298c8c", "#f1a226")) + theme_Publication() + theme(plot.title = element_text(hjust = 0.5), legend.position = "none", axis.title.x = element_blank(), strip.text = element_text(size = 14)) 
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_of_interest_macro.pdf", width = 12, height = 7.5, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_of_interest_subsetwise.pdf", width = 12, height = 7.5, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_of_interest_AM1AM3.pdf", width = 6, height = 8, units = "in")
+
+plotlist <- split(plotdat, f = plotdat$rxn_code)
+plotlist <- lapply(plotlist, function(x){
+  comparisons <- list(c("Uninfected", "WT Mtb"),c("WT Mtb", "hip1 Mut"), c("Uninfected", "hip1 Mut"))
+  ggplot(x, aes(x = Group, y = value, fill = Group)) + geom_violin() + geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) + ggpubr::stat_compare_means(comparisons = comparisons) + facet_wrap(.~`label.subset`, ncol = 2, scales = "free")+ labs(y = "Reaction Score") + scale_x_discrete(labels = c("Uninfected","WT Mtb", "hip1 mut")) + scale_fill_manual(values = c("grey","#298c8c", "#f1a226")) + theme_Publication() + theme(plot.title = element_text(hjust = 0.5), legend.position = "none", axis.title.x = element_blank(), strip.text = element_text(size = 14), plot.margin = margin(0,0,0,3), axis.text = element_text(size = 13)) 
+})
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_ATPS4m_pos_AM1AM3.pdf",plotlist[[1]], width = 6, height = 4, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_GLCt1r_pos_AM1AM3.pdf",plotlist[[2]], width = 6, height = 4, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_PDHm_pos_AM1AM3.pdf",plotlist[[3]], width = 6, height = 4, units = "in")
+plotlist[[3]]
+```
+
+# Individual reactions info DCs
+```{r}
+reaction_penalties_dc <- read.table("Compass_scrnaseq/reaction_panalties_Bcell_fibro_NK_ILC_Epi_Neu_DC_NKT_Tgd_Mar2025.tsv", sep = "\t", row.names = 1)
+colnames(reaction_penalties_dc) <- reaction_penalties_dc[1,]
+reaction_penalties_dc <- reaction_penalties_dc[-1, ]
+dc <- subset(lung9s3, subset = label.main_new == "DC")
+reaction_penalties_dc <- reaction_penalties_dc[,colnames(reaction_penalties_dc) %in% colnames(dc)]
+reaction_penalties_dc <- reaction_penalties_dc %>% mutate_all(as.numeric)
+
+recon_metadata <- read.csv("Compass_scrnaseq/rxn_md.csv")
+
+get_reaction_consistencies <- function(compass_reaction_penalties, min_range = 1e-3) {
+  # Converts the raw penalties outputs of compass into scores per reactions where higher numbers indicate more activity
+  df <- -log(compass_reaction_penalties + 1)
+  df <- df[apply(df, 1, max) - apply(df, 1, min) >= min_range, ]
+  df <- df - min(df)
+  return(df)
+}
+reaction_consistencies_dc <- get_reaction_consistencies(reaction_penalties_dc)
+
+reaction_consistencies_meta <- reaction_consistencies_dc %>% rownames_to_column("rxn_code")
+reaction_consistencies_meta$rxn_code_nodirection <- sapply(reaction_consistencies_meta$rxn_code, function(x)str_sub(x, 1, nchar(x)-4))
+reaction_consistencies_meta <- merge(recon_metadata, reaction_consistencies_meta, by = "rxn_code_nodirection")
+reaction_consistencies_meta <- reaction_consistencies_meta[reaction_consistencies_meta$rxn_confidence %in% c("0", "4"),]
+
+#dc <- readRDS("rds_obs/dc_seuratobject_Jan172025.rds")
+samplemetadata <- dc@meta.data %>% select("SampleID","Group", "label.main_new") %>% rownames_to_column("Barcode")
+
+#plotdat <- reaction_consistencies_meta[reaction_consistencies_meta$rxn_code %in% c("ATPS4m_pos", "ADK1m_pos", "FATP1t_neg", "GLCt1r_pos", "PYRt2m_pos", "PDHm_pos", "CSm_pos", "LINOFATPtc_pos"),]
+plotdat <- reaction_consistencies_meta[reaction_consistencies_meta$rxn_code %in% c("ATPS4m_pos", "PDHm_pos", "GLCt1r_pos", "FATP1t_neg"),]
+plotdat <- melt(plotdat, id.vars = c("rxn_code_nodirection", "rxn_name_long", "subsystem", "ind_in_original_recon", "rxn_EC_number", "genes_associated_with_rxn", "rxn_formula", "rxn_confidence", "rxn_code"))
+colnames(plotdat)[colnames(plotdat) == "variable"] <- "Barcode"
+plotdat <- merge(plotdat, samplemetadata, by = "Barcode")
+plotdat <- plotdat[plotdat$Group != "Uninfected",]
+#plotdat <- plotdat[plotdat$label.subset %in% c("AM 1", "AM 3"),]
+plotdat <- plotdat[plotdat$SampleID %in% c("6", "9"),]
+
+#comparisons <- list(c("Uninfected", "WT Mtb"), c("WT Mtb", "hip1 Mut"), c("Uninfected", "hip1 Mut"))
+comparisons <- list(c("WT Mtb", "hip1 Mut"))
+ggplot(plotdat, aes(x = Group, y = value, fill = Group)) + geom_violin() + geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) + ggpubr::stat_compare_means(comparisons = comparisons) + facet_wrap(.~rxn_code, ncol = 2, scales = "free")+ labs(y = "Reaction Score") + scale_x_discrete(labels = c("WT Mtb", "hip1 mut")) + scale_fill_manual(values = c("#298c8c", "#f1a226")) + theme_Publication() + theme(plot.title = element_text(hjust = 0.5), legend.position = "none", axis.title.x = element_blank(), strip.text = element_text(size = 14)) 
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_of_interest_dc.pdf", width = 12, height = 7.5, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_of_interest_subsetwise.pdf", width = 12, height = 7.5, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_of_interest_AM1AM3.pdf", width = 6, height = 8, units = "in")
+
+plotlist <- split(plotdat, f = plotdat$rxn_code)
+plotlist <- lapply(plotlist, function(x){
+  comparisons <- list(c("Uninfected", "WT Mtb"),c("WT Mtb", "hip1 Mut"), c("Uninfected", "hip1 Mut"))
+  ggplot(x, aes(x = Group, y = value, fill = Group)) + geom_violin() + geom_boxplot(width = 0.1, fill = "white", outlier.shape = NA) + ggpubr::stat_compare_means(comparisons = comparisons) + facet_wrap(.~`label.subset`, ncol = 2, scales = "free")+ labs(y = "Reaction Score") + scale_x_discrete(labels = c("Uninfected","WT Mtb", "hip1 mut")) + scale_fill_manual(values = c("grey","#298c8c", "#f1a226")) + theme_Publication() + theme(plot.title = element_text(hjust = 0.5), legend.position = "none", axis.title.x = element_blank(), strip.text = element_text(size = 14), plot.margin = margin(0,0,0,3), axis.text = element_text(size = 13)) 
+})
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_ATPS4m_pos_AM1AM3.pdf",plotlist[[1]], width = 6, height = 4, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_GLCt1r_pos_AM1AM3.pdf",plotlist[[2]], width = 6, height = 4, units = "in")
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/19.July2025-PB/reactions_PDHm_pos_AM1AM3.pdf",plotlist[[3]], width = 6, height = 4, units = "in")
+plotlist[[3]]
+```
+
+
+
+
+
+
+
+
+
+
+

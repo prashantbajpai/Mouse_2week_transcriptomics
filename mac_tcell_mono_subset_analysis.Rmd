@@ -1,0 +1,2168 @@
+---
+title: "Mac and T cell subset analysis"
+author: "Prashant"
+date: "2024-05-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+library(readxl)
+library(writexl)
+library(Seurat)
+library(patchwork)
+library(gridExtra)
+library(msigdbr)
+library(fgsea)
+library(MAST)
+library(enrichplot)
+library(reshape2)
+library(RColorBrewer)
+
+#setwd("/Users/pbajpai/Documents/KIT/Kit_10x/")
+source('helper_functions.R')
+source('/Users/pbajpai/Documents/Rthemes/theme_publication.R')
+```
+
+```{r loadRdata}
+#lung9s2 <- readRDS("rds_obs/lung9s2_newannotation.rds")
+#Idents(lung9s2) <- "Group"
+
+lung9s3 <- readRDS("rds_obs/lung9s3_newannotation.rds")
+Idents(lung9s3) <- "Group"
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "Rv", "Hip1"))
+lung9s3$label.main_new <- factor(lung9s3$label.main_new, levels = c("AM", "IM", "Neutrophils", "DC", "Monocytes", "CD4 T Cells", "CD8 T Cells", "Tgd", "B cells", "NK cells", "NKT","ILC", "Endothelial cells", "Fibroblasts", "Epithelial cells"))
+
+lung9s3$Group <- gsub("Rv", "WT Mtb", lung9s3$Group)
+lung9s3$Group <- gsub("Hip1", "hip1 Mut", lung9s3$Group)
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "WT Mtb", "hip1 Mut"))
+
+lung9s3$label.main_new2 <- lung9s3$label.main_new
+lung9s3$label.main_new2 <- gsub("AM", "1-AM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("IM", "2-IM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Neutrophils", "3-Neutrophils", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("DC", "4-DC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Monocytes", "5-Monocytes", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD4 T Cells", "6-CD4 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD8 T Cells", "7-CD8 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Tgd", "8-Tgd", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("B cells", "9-B cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NK cells", "10-NK cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NKT", "11-NKT", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("ILC", "12-ILC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Endothelial cells", "13-Endothelial cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Fibroblasts", "14-Fibroblasts", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Epithelial cells", "15-Epithelial cells", lung9s3$label.main_new2)
+
+lung9s3$label.main_new2 <- factor(lung9s3$label.main_new2, levels = c("1-AM", "2-IM", "3-Neutrophils", "4-DC", "5-Monocytes", "6-CD4 T Cells", "7-CD8 T Cells", "8-Tgd", "9-B cells", "10-NK cells", "11-NKT","12-ILC", "13-Endothelial cells", "14-Fibroblasts", "15-Epithelial cells"))
+```
+
+```{r}
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+```
+
+```{r}
+DimPlot(lung9s3, split.by = "SampleID", group.by = "label.main_new", cols = cols, ncol = 3) + theme(plot.title = element_blank())
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/17.May2025-PB/umap_groupwise_allcells.pdf", width = 10, height = 10, units = "in")
+```
+
+
+#GSEA for AM subsets
+```{r}
+macro <- subset(lung9s3, subset = label.main == "Macrophages")
+#redo normalizations and clustering 
+macro <- FindVariableFeatures(macro, verbose = F)
+macro <- ScaleData(macro, verbose = F)
+macro <- NormalizeData(macro,  verbose = F)
+macro <- RunPCA(macro, verbose = F, npcs = 20)
+#ElbowPlot(macro)
+macro <- RunUMAP(macro, dims = 1:15, verbose = F)
+macro <- FindNeighbors(macro, dims = 1:15)
+macro <- FindClusters(macro, resolution = 0.1)
+
+label.subset <- macro@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "AM 1", ifelse(seurat_clusters == 1, "AM 2", ifelse(seurat_clusters == 3, "AM 3", "IM")))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("AM 1", "AM 2", "AM 3", "IM"))
+
+macro <- AddMetaData(macro, metadata = label.subset)
+Idents(macro) <- "label.subset"
+
+DimPlot(macro, group.by = "label.subset", cols = cols)
+```
+
+#save macro data for other analysis
+```{r}
+saveRDS(macro, "rds_obs/macro_seuratobject_Jan172025.rds")
+```
+
+
+```{r}
+topmarkersPercluster <- lapply(unique(macro$label.subset), function(x){
+  message(paste("running cluster:", x, sep = ""))
+  cluster_marker <- FindMarkers(macro, ident.1 = x, min.pct = 0.1, only.pos = F)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- unique(macro$label.subset)
+# topmarkersPercluster <- topmarkersPercluster[c("AM 1", "AM 2", "AM 3", "IM")]
+# topmarkersPercluster <- lapply(topmarkersPercluster, function(x){
+#   out <- x[x$avg_log2FC >= 0.378 & x$p_val_adj <= 0.05,]
+#   out <- out[order(out$avg_log2FC, decreasing = T),]
+# })
+```
+
+```{r}
+topTables_macro <- sapply(as.character(unique(macro$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(macro,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+#names(topTables_macro) <- unique(macro$label.subset)
+topTables_macro <- topTables_macro[c("AM 1", "AM 2", "AM 3", "IM")]
+#saveRDS(topTables_macro, "rds_obs/topTable_macro_hip1_vs_WT_Feb2025.rds")
+```
+
+# fgsea
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GOBP", "GOMF", "REACTOME", "KEGG", "HALLMARK")),]
+filtered_gene_sets <- all_gene_sets[all_gene_sets$gs_name %in% c("HALLMARK_TNFA_SIGNALING_VIA_NFKB", "REACTOME_TNFR2_NON_CANONICAL_NF_KB_PATHWAY", "REACTOME_INTERLEUKIN_1_SIGNALING", "REACTOME_INTERLEUKIN_4_AND_INTERLEUKIN_13_SIGNALING", "REACTOME_MITOCHONDRIAL_BIOGENESIS"),]
+filtered_gene_sets <- all_gene_sets[grep("polyamine", all_gene_sets$gs_name, ignore.case = T),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+#topmarkersPercluster <- marker_genes
+fgsea_genelist = lapply(seq_along(topTables_macro), function(i){
+  x = topTables_macro[[i]]
+  print(names(topTables_macro)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_macro)
+
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 60)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+write_xlsx(combined_fgsea, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/GSEA/AM subsets/gsea_am_within_subset_comparison.xlsx")
+write_xlsx(combined_fgsea, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Macrophage subsets/GSEA/gsea_am_hip1_vs_rv_allpathways.xlsx")
+
+combined_fgsea = bind_rows(combined_fgsea, .id = "cluster")
+
+plotdat <- combined_fgsea
+plotdat <- combined_fgsea[combined_fgsea$pathway %in% c("KEGG_OXIDATIVE_PHOSPHORYLATION", "REACTOME_RESPIRATORY_ELECTRON_TRANSPORT", "GOBP_ATP_SYNTHESIS_COUPLED_ELECTRON_TRANSPORT", "REACTOME_THE_CITRIC_ACID_TCA_CYCLE_AND_RESPIRATORY_ELECTRON_TRANSPORT", "GOBP_NADH_DEHYDROGENASE_COMPLEX_ASSEMBLY", "KEGG_FATTY_ACID_METABOLISM", "GOBP_FATTY_ACID_BETA_OXIDATION", "GOBP_MITOCHONDRION_ORGANIZATION", "GOBP_INTERLEUKIN_8_PRODUCTION", "GOBP_INTERLEUKIN_6_PRODUCTION", "GOBP_T_CELL_MEDIATED_IMMUNITY", "REACTOME_MHC_CLASS_II_ANTIGEN_PRESENTATION", "GOBP_INTERLEUKIN_12_PRODUCTION", "GOBP_POSITIVE_REGULATION_OF_NATURAL_KILLER_CELL_MEDIATED_IMMUNITY", "GOBP_ACTIVATION_OF_NF_KAPPAB_INDUCING_KINASE_ACTIVITY", "GOBP_LYMPHOCYTE_MEDIATED_IMMUNITY", "REACTOME_GLYCOLYSIS", "REACTOME_INTERLEUKIN_12_SIGNALING", "GOBP_MITOCHONDRIAL_CYTOCHROME_C_OXIDASE_ASSEMBLY", "GOMF_TOLL_LIKE_RECEPTOR_BINDING", "GOBP_REGULATION_OF_NEUTROPHIL_ACTIVATION", "GOBP_PRODUCTION_OF_MOLECULAR_MEDIATOR_INVOLVED_IN_INFLAMMATORY_RESPONSE"),]
+#plotdat <- combined_fgsea[grep("mitochond|ATP|oxidative|NADH|TCA|electron|cytokine|interleukin|TNF|IL2|IL6|interferon|tgf|prolif", combined_fgsea$pathway3, ignore.case = T),]
+#plotdat <- plotdat[plotdat$NES >= 0,]
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+plotdat <- plotdat[order(plotdat$cluster),]
+#pathorder <- c(grep("interleukin|cytokine",unique(plotdat$pathway3), invert = T, value = T, ignore.case = T), grep("interleukin|cytokine",unique(plotdat$pathway3), invert = F, value = T, ignore.case = T))
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = unique(plotdat$pathway3))
+plotdat$neglog10pval <- -log10(plotdat$pval)
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(2, 6)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/GSEA/AM subsets/gsea_am_within_subset_comparison_allpathways.pdf", width = 9, height = 300, limitsize = F, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Macrophage subsets/GSEA/gsea_am_hip1_vs_rv_allpathways.pdf", width = 9, height = 400, limitsize = F, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Macrophage subsets/GSEA/gsea_am_hip1_vs_rv_allpathways_filtered.pdf", width = 8, height = 6, limitsize = F, units = "in")
+```
+
+# Pathway enrichment of up genes from each AM subset
+```{r}
+goi <- lapply(topmarkersPercluster, function(x){
+  out <- x[x$avg_log2FC >= 0.378 & x$p_val_adj <= 0.05,]
+  out <- out[order(out$avg_log2FC, decreasing = T),]
+  out <- out$GeneID
+})
+
+library(ReactomePA)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+entrez_genes <- lapply(goi, function(x){
+  out <- mapIds(org.Mm.eg.db, keys = x, column = "ENTREZID", keytype = "SYMBOL")
+})
+out_path_reactome <- lapply(entrez_genes, function(x){
+  out <- enrichPathway(gene = x, organism = "mouse")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_kegg <- lapply(entrez_genes, function(x){
+  out <- enrichKEGG(gene = x, organism = "mmu")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_GO <- lapply(entrez_genes, function(x){
+  out <- enrichGO(gene = x, OrgDb = "org.Mm.eg.db", ont = "ALL")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+
+plotdat <- c(out_path_GO, out_path_kegg, out_path_reactome)
+plotdat <- bind_rows(plotdat, .id = "cluster")
+
+plotdat <- split(plotdat, f = plotdat$cluster)
+write_xlsx(plotdat, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/AM subsets/Pathway enrichment/pathway_enrichment_within_subset_comparison.xlsx")
+
+plotdat <- bind_rows(plotdat)
+#plotdat <- plotdat[grep("mitochond|ATP|oxidative|NADH|TCA|electron|cytokine|interleukin|TNF|IL2|IL6|interferon|tgf|prolif|chemokine|complement", plotdat$Description, ignore.case = T),]
+plotdat <- plotdat[plotdat$Description %in% c("fatty acid metabolic process", "lipid oxidation", "fatty acid oxidation", "leukotriene metabolic process", "regulation of macrophage derived foam cell differentiation", "regulation of release of sequestered calcium ion into cytosol", "reactive oxygen species biosynthetic process", "interleukin−6 production", "positive regulation of oxidoreductase activity", "cytokine production involved in inflammatory response", "positive regulation of nitric−oxide synthase activity", "cell−cell junction assembly", "positive regulation of tumor necrosis factor superfamily cytokine production", "regulation of SMAD protein signal transduction", "macrophage activation", "positive regulation of cytokine production involved in immune response", "regulation of CD8−positive, alpha−beta T cell proliferation", "regulation of natural killer cell mediated immunity", "CD4−positive, alpha−beta T cell activation", "adenylate cyclase−modulating G protein−coupled receptor signaling pathway", "regulation of interleukin−1 production", "regulation of interleukin−6 production", "antigen processing and presentation of endogenous peptide antigen", "regulation of macrophage activation", "regulation of interleukin−12 production", "T cell costimulation", "Notch signaling pathway", "positive regulation of interleukin−12 production", "T−helper 1 type immune response", "Antigen processing−Cross presentation", "Toll Like Receptor 2 (TLR2) Cascade", "nuclear division", "positive regulation of cell cycle", "regulation of metaphase/anaphase transition of cell cycle", "cell cycle G2/M phase transition", "cytokinesis", "humoral immune response", "positive regulation of leukocyte chemotaxis", "antigen processing and presentation of peptide or polysaccharide antigen via MHC class II", "cellular response to interleukin−1", "response to tumor necrosis factor", "regulation of monocyte chemotaxis", "complement activation", "T cell cytokine production", "canonical NF−kappaB signal transduction", "positive regulation of interleukin−6 production", "cellular response to interleukin−17", "interleukin−2 production", "interleukin−8 production", "CD40 signaling pathway", "CXCR chemokine receptor binding"),]
+plotdat$pathway <- str_wrap(plotdat$Description, 60)
+plotdat$neglogpval <- -log10(plotdat$pvalue)
+plotdat$pathway <- factor(plotdat$pathway, levels = unique(plotdat$pathway))
+
+ggplot(plotdat, aes(x = cluster, y = pathway, color = neglogpval)) +
+    geom_point(aes(size = Count)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient(low = '#e7b9bf', high = '#b2182b') +
+    scale_size(range = c(3, 7)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Macrophage subsets/Pathway enrichment/pathway_enrichment_within_subset_comparison_allpathways_filtered.pdf", width = 9, height = 10, limitsize = F, units = "in")
+```
+
+# T cell subset
+```{r}
+tcell <- subset(lung9s3, subset = label.main == "T cells")
+
+#redo normalizations and clustering 
+tcell <- FindVariableFeatures(tcell, verbose = F)
+tcell <- ScaleData(tcell, verbose = F)
+tcell <- NormalizeData(tcell,  verbose = F)
+tcell <- RunPCA(tcell, verbose = F, npcs = 20)
+tcell <- RunUMAP(tcell, dims = 1:15, verbose = F)
+tcell <- FindNeighbors(tcell, dims = 1:15)
+tcell <- FindClusters(tcell, resolution = 1)
+
+DimPlot(tcell, group.by = "seurat_clusters")
+#label tcell subsets
+label.subset <- tcell@meta.data %>%
+  dplyr::select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters %in% c(1, 2, 3, 5, 6, 12, 13), "CD4+ T Naive", ifelse(seurat_clusters == 8, "CD4+ T Act", ifelse(seurat_clusters == 9, "CD4+ T Memory", ifelse(seurat_clusters %in% c(0, 11, 4), "CD8+ T Naive", ifelse(seurat_clusters == 10, "CD8+ T Act", "CD8+ T Memory")))))) %>%
+  dplyr::select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = unique(label.subset$label.subset)[c(1, 4, 3, 2, 5, 6)])
+
+tcell <- AddMetaData(tcell, metadata = label.subset)
+Idents(tcell) <- "label.subset"
+
+DimPlot(tcell, group.by = "label.subset", cols = cols)
+```
+
+# save tcell data for other analysis
+```{r}
+saveRDS(tcell, "rds_obs/tcell_seuratobject_Jan172025.rds")
+```
+
+
+```{r}
+topTables_tcell <- sapply(as.character(unique(tcell$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(tcell,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+topTables_tcell <- topTables_tcell[c(3,4,1,6,5,2)]
+```
+
+```{r}
+topmarkersPercluster <- lapply(unique(tcell$label.subset), function(x){
+  message(paste("running cluster:", x, sep = ""))
+  cluster_marker <- FindMarkers(tcell, ident.1 = x, min.pct = 0.1, only.pos = F)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- unique(tcell$label.subset)
+```
+
+# Pathway enrichment of up genes from each T cell subset
+```{r}
+goi <- lapply(topmarkersPercluster, function(x){
+  out <- x[x$avg_log2FC >= 0.378 & x$p_val_adj <= 0.05,]
+  out <- out[order(out$avg_log2FC, decreasing = T),]
+  out <- out$GeneID
+})
+
+library(ReactomePA)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+entrez_genes <- lapply(goi, function(x){
+  out <- mapIds(org.Mm.eg.db, keys = x, column = "ENTREZID", keytype = "SYMBOL")
+})
+out_path_reactome <- lapply(entrez_genes, function(x){
+  out <- enrichPathway(gene = x, organism = "mouse")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_kegg <- lapply(entrez_genes, function(x){
+  out <- enrichKEGG(gene = x, organism = "mmu")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_GO <- lapply(entrez_genes, function(x){
+  out <- enrichGO(gene = x, OrgDb = "org.Mm.eg.db", ont = "ALL")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+
+plotdat <- c(out_path_GO, out_path_kegg, out_path_reactome)
+plotdat <- bind_rows(plotdat, .id = "cluster")
+
+plotdat <- split(plotdat, f = plotdat$cluster)
+write_xlsx(plotdat, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/pathway_enrichment_tcell_within_subset_comparison.xlsx")
+
+plotdat <- bind_rows(plotdat)
+
+plotdat$pathway <- str_wrap(plotdat$Description, 60)
+plotdat$neglogpval <- -log10(plotdat$pvalue)
+plotdat$pathway <- factor(plotdat$pathway, levels = unique(plotdat$pathway))
+
+ggplot(plotdat, aes(x = cluster, y = pathway, color = neglogpval)) +
+    geom_point(aes(size = Count)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient(low = '#e7b9bf', high = '#b2182b') +
+    scale_size(range = c(3, 7)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/pathway_enrichment_tcell_within_subset_comparison_allpathways.pdf", width = 9, height = 500, limitsize = F, units = "in")
+```
+
+# GSEA tcell clusters
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GOBP", "REACTOME", "HALLMARK", "KEGG")),]
+filtered_gene_sets <- all_gene_sets[grep("polyamine", all_gene_sets$gs_name, ignore.case = T),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_tcell), function(i){
+  x = topTables_tcell[[i]]
+  print(names(topTables_tcell)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset, scoreType = "pos")
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  fgsea_out$cluster <- unique(x$cluster)
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_tcell)
+
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 60)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+write_xlsx(combined_fgsea,"Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Tcell subsets/GSEA/gsea_tcell_hip1_vs_rv_allpathways.xlsx")
+combined_fgsea = bind_rows(combined_fgsea, .id = "cluster")
+
+plotdat <- combined_fgsea
+
+plotdat <- plotdat[plotdat$pathway %in% c("REACTOME_INTERLEUKIN_1_SIGNALING", "REACTOME_INTERLEUKIN_12_FAMILY_SIGNALING", "GOBP_INTERLEUKIN_10_PRODUCTION", "GOBP_LIPID_OXIDATION", "GOBP_LIPID_BIOSYNTHETIC_PROCESS", "GOBP_LIPID_METABOLIC_PROCESS", "HALLMARK_OXIDATIVE_PHOSPHORYLATION", "GOBP_ATP_SYNTHESIS_COUPLED_ELECTRON_TRANSPORT", "REACTOME_THE_CITRIC_ACID_TCA_CYCLE_AND_RESPIRATORY_ELECTRON_TRANSPORT", "HALLMARK_FATTY_ACID_METABOLISM", "GOBP_FATTY_ACID_BETA_OXIDATION", "GOBP_FATTY_ACID_DERIVATIVE_BIOSYNTHETIC_PROCESS"),]
+
+plotdat <- plotdat[plotdat$pathway %in% c("REACTOME_INTERLEUKIN_1_SIGNALING", "REACTOME_INTERLEUKIN_12_FAMILY_SIGNALING", "GOBP_INTERLEUKIN_10_PRODUCTION", "GOBP_T_HELPER_17_TYPE_IMMUNE_RESPONSE", "HALLMARK_INTERFERON_ALPHA_RESPONSE", "HALLMARK_INTERFERON_GAMMA_RESPONSE", "REACTOME_TNF_SIGNALING", "REACTOME_CYTOKINE_SIGNALING_IN_IMMUNE_SYSTEM"),]
+
+plotdat$cluster <- factor(plotdat$cluster, levels = c("CD4+ T Act", "CD4+ T Memory",  "CD4+ T Naive", "CD8+ T Naive", "CD8+ T Act",  "CD8+ T Memory"))
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = unique(plotdat$pathway3))
+plotdat$neglog10pval <- -log10(plotdat$pval)
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + scale_color_discrete(drop = F) + scale_x_discrete(drop = F) +
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(3, 6)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+#ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Tcell subsets/GSEA/gsea_tcell_hip1_vs_rv_fil.pdf", width = 8, height = 5, limitsize = F)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/gsea_tcell_hip1_vs_rv_fil_immune.pdf", width = 8, height = 4, limitsize = F)
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/17.May2025-PB/gsea_tcell_hip1_vs_rv_fil.pdf", width = 8, height = 5)
+```
+
+
+
+# Mono subsets: Zilionis lung data reference
+```{r}
+library(SingleR)
+mono <- subset(lung9s3, subset = label.main == "Monocytes")
+mono <- FindVariableFeatures(mono, verbose = F)
+mono <- ScaleData(mono, verbose = F)
+mono <- NormalizeData(mono,  verbose = F)
+mono <- RunPCA(mono, verbose = F, npcs = 20)
+mono <- RunUMAP(mono, dims = 1:15, verbose = F)
+mono <- FindNeighbors(mono, dims = 1:15)
+mono <- FindClusters(mono, resolution = 1)
+
+DimPlot(mono, group.by = "seurat_clusters")
+zilionis_ref <- scRNAseq::ZilionisLungData(which = "mouse")
+zilionis_ref <- zilionis_ref[, zilionis_ref$`Minor subset` %in% c("Mono1", "Mono2", "Mono3")]
+zilionis_ref <- scuttle::logNormCounts(zilionis_ref)
+
+Idents(mono) <- "seurat_clusters"
+label.subset <- SingleR(as.SingleCellExperiment(mono), ref = zilionis_ref, labels = zilionis_ref$`Minor subset`, clusters = Idents(mono))
+monolabels <- label.subset$labels
+names(monolabels) <- levels(Idents(mono))
+mono$label.subsetzil <- ifelse(mono$seurat_clusters %in% c(2,4,5,6,7,9,10,12), "Mono1", ifelse(mono$seurat_clusters %in% c(0,1,3,8,13,14), "Mono2", "Mono3"))
+mono$label.subset <- mono$label.subsetzil
+DimPlot(mono, group.by = "label.subsetzil", cols = cols)
+
+DimPlot(mono, group.by = "label.subset", cols = cols)
+#ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/UMAP/umap_labelsubset_zilionis.pdf", width = 5.5, height = 5, units = "in")
+```
+
+#save monon data for future use
+```{r}
+saveRDS(mono, "rds_obs/mono_seuratobject_Jan172025.rds")
+```
+
+
+#Violin plots for marker genes
+```{r}
+goi <- c("Vcan", "Ly6c1", "Ly6c2", "Cd300e", "Ace", "Fcgr4", "Il1b", "S100a8", "S100a9")
+
+countdata <- FetchData(object = mono, layer = "data", vars = goi) %>% rownames_to_column("Cell")
+
+metadata <- mono@meta.data %>% 
+  dplyr::select(Group, label.subset) %>% rownames_to_column("Cell")
+
+metadata <- merge(metadata, countdata, by = "Cell")
+
+plotdat <- reshape2::melt(metadata, id.vars = c("Cell", "Group", "label.subset"))
+plotdat$variable <- factor(plotdat$variable, levels = goi)
+plotlist <- split(plotdat, f = plotdat$variable)
+
+plotlist <- lapply(plotlist, function(x){
+  ggplot(x, aes(x = label.subset, y = value, fill = label.subset)) + geom_violin(linewidth = 0.1, scale = "width", position = "dodge") + scale_fill_manual(values = cols) + theme_Publication() + labs(title = unique(x$variable)) + theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,0,0,0, "cm")), plot.title = element_text(hjust = 0.5))
+})
+
+plotlist[[1]] + plotlist[[2]] + plotlist[[3]] + plotlist[[4]] + plotlist[[5]] + plotlist[[6]] + plotlist[[7]] + plotlist[[8]] + plotlist[[9]] + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/Violin/subset_markergenes.pdf", width = 10, height = 7, units = "in")
+```
+
+```{r}
+Idents(mono) <- "label.subset"
+topmarkersPercluster_mono <- lapply(unique(mono$label.subset), function(x){
+  message(paste("running cluster:", x, sep = ""))
+  cluster_marker <- FindMarkers(mono, ident.1 = x, min.pct = 0.1, only.pos = F)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster_mono) <- unique(mono$label.subset)
+
+topTables_mono <- sapply(c("Mono1", "Mono2", "Mono3"), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(mono,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+#saveRDS(topTables_mono, "rds_obs/topTable_mono_hip1_vs_WT_Feb2025.rds")
+```
+
+# GSEA monocyte clusters
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GOBP", "REACTOME", "HALLMARK", "KEGG")),]
+filtered_gene_sets <- all_gene_sets[grep("polyamine", all_gene_sets$gs_name, ignore.case = T),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+test <- all_gene_sets[grep("Ear2", all_gene_sets$gene_symbol),]
+
+#topmarkersPercluster <- marker_genes
+fgsea_genelist = lapply(seq_along(topTables_mono), function(i){
+  x = topTables_mono[[i]]
+  print(names(topTables_mono)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset, scoreType = "pos")
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  fgsea_out$cluster <- unique(x$cluster)
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_mono)
+
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 60)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+write_xlsx(combined_fgsea,"Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/GSEA/gsea_mono_hip1_vs_rv_allpathways.xlsx")
+combined_fgsea = bind_rows(combined_fgsea, .id = "cluster")
+
+plotdat <- combined_fgsea
+
+plotdat <- plotdat[plotdat$pathway %in% c("GOBP_ATP_SYNTHESIS_COUPLED_ELECTRON_TRANSPORT", "GOBP_RESPIRATORY_ELECTRON_TRANSPORT_CHAIN", "KEGG_OXIDATIVE_PHOSPHORYLATION", "REACTOME_MITOCHONDRIAL_BIOGENESIS", "KEGG_CITRATE_CYCLE_TCA_CYCLE", "HALLMARK_FATTY_ACID_METABOLISM", "REACTOME_INTERLEUKIN_12_FAMILY_SIGNALING", "GOBP_LIPID_DROPLET_ORGANIZATION", "REACTOME_INNATE_IMMUNE_SYSTEM"),]
+
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = unique(plotdat$pathway3)[c(1,3,2,5,4,6,7,9,8)])
+plotdat$neglog10pval <- -log10(plotdat$pval)
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + scale_color_discrete(drop = F) + scale_x_discrete(drop = F) +
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(3, 6)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/GSEA/gsea_mono_hip1_vs_rv_allpathways.pdf", width = 10, height = 200, limitsize = F)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/GSEA/gsea_mono_hip1_vs_rv_allpathways_fil.pdf", width = 6.5, height = 3.5, limitsize = F)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/Monocyte subset/gsea_filtered_unlabelled_clusters.pdf", width = 7, height = 4, limitsize = F)
+```
+
+# Pathway enrichment of up genes from each AM subset
+```{r}
+goi <- lapply(topmarkersPercluster_mono, function(x){
+  out <- x[x$avg_log2FC >= 0.378 & x$p_val_adj <= 0.05,]
+  out <- out[order(out$avg_log2FC, decreasing = T),]
+  out <- out$GeneID
+})
+
+library(ReactomePA)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+entrez_genes <- lapply(goi, function(x){
+  out <- mapIds(org.Mm.eg.db, keys = x, column = "ENTREZID", keytype = "SYMBOL")
+})
+out_path_reactome <- lapply(entrez_genes, function(x){
+  out <- enrichPathway(gene = x, organism = "mouse")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_kegg <- lapply(entrez_genes, function(x){
+  out <- enrichKEGG(gene = x, organism = "mmu")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_GO <- lapply(entrez_genes, function(x){
+  out <- enrichGO(gene = x, OrgDb = "org.Mm.eg.db", ont = "ALL")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+
+plotdat <- c(out_path_GO, out_path_kegg, out_path_reactome)
+plotdat <- bind_rows(plotdat, .id = "cluster")
+
+plotdat <- split(plotdat, f = plotdat$cluster)
+write_xlsx(plotdat, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/Pathway enrichment/pathway_enrichment_within_subset_comparison.xlsx")
+
+plotdat <- bind_rows(plotdat)
+#plotdat <- plotdat[grep("mitochond|ATP|oxidative|NADH|TCA|electron|cytokine|interleukin|TNF|IL2|IL6|interferon|tgf|prolif|chemokine|complement", plotdat$Description, ignore.case = T),]
+plotdat <- plotdat[plotdat$Description %in% c("positive regulation of innate immune response", "tumor necrosis factor superfamily cytokine production", "antigen processing and presentation of exogenous peptide antigen via MHC class II", "regulation of NLRP3 inflammasome complex assembly", "type I interferon-mediated signaling pathway", "CD8-positive, alpha-beta T cell activation", "natural killer cell activation", "antigen processing and presentation of endogenous peptide antigen via MHC class I", "positive regulation of natural killer cell mediated cytotoxicity", "endothelial cell development", "positive regulation of interleukin-12 production", "myeloid cell development", "cell-cell junction assembly", "myeloid dendritic cell activation", "antibacterial humoral response", "positive regulation of ATP-dependent activity", "Notch signaling pathway", "interleukin-1-mediated signaling pathway", "regulation of T-helper 17 cell differentiation", "regulation of granulocyte chemotaxis", "transforming growth factor beta production", "neutrophil extravasation", "regulation of nitric-oxide synthase activity", "negative regulation of chemokine production", "Melanoma - Mus musculus (house mouse)"),]
+plotdat$pathway <- str_wrap(plotdat$Description, 60)
+plotdat$neglogpval <- -log10(plotdat$pvalue)
+plotdat$pathway <- factor(plotdat$pathway, levels = c("positive regulation of innate immune response", "tumor necrosis factor superfamily cytokine production", "antigen processing and presentation of exogenous peptide\nantigen via MHC class II", "regulation of NLRP3 inflammasome complex assembly", "type I interferon-mediated signaling pathway", "CD8-positive, alpha-beta T cell activation", "natural killer cell activation", "antigen processing and presentation of endogenous peptide\nantigen via MHC class I", "positive regulation of natural killer cell mediated\ncytotoxicity", "endothelial cell development", "positive regulation of interleukin-12 production", "myeloid cell development", "cell-cell junction assembly", "myeloid dendritic cell activation", "antibacterial humoral response", "positive regulation of ATP-dependent activity", "Notch signaling pathway", "interleukin-1-mediated signaling pathway", "regulation of T-helper 17 cell differentiation", "regulation of granulocyte chemotaxis", "transforming growth factor beta production", "neutrophil extravasation", "regulation of nitric-oxide synthase activity", "negative regulation of chemokine production", "Melanoma - Mus musculus (house mouse)"))
+
+ggplot(plotdat, aes(x = cluster, y = pathway, color = neglogpval)) +
+    geom_point(aes(size = Count)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient(low = '#e7b9bf', high = '#b2182b') +
+    scale_size(range = c(3, 7)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/monocyte cluster/pathway enrichment/pathway_enrichment_within_subset_comparison_allpathways_filtered.pdf", width = 7, height = 8, limitsize = F, units = "in")
+```
+
+# Neutrophil clusters
+```{r}
+neutro <- subset(lung9s3, subset = label.main_new == "Neutrophils")
+
+#redo normalizations and clustering 
+neutro <- FindVariableFeatures(neutro, verbose = F)
+neutro <- ScaleData(neutro, verbose = F)
+neutro <- NormalizeData(neutro,  verbose = F)
+neutro <- RunPCA(neutro, verbose = F, npcs = 20)
+neutro <- RunUMAP(neutro, dims = 1:15, verbose = F)
+neutro <- FindNeighbors(neutro, dims = 1:15)
+neutro <- FindClusters(neutro, resolution = 0.4)
+
+#label neutro subsets
+label.subset <- neutro@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "Neutrophil 1", ifelse(seurat_clusters == 1, "Neutrophil 2", ifelse(seurat_clusters == 3, "Neutrophil 3", "Neutrophil 4")))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("Neutrophil 1", "Neutrophil 2", "Neutrophil 3", "Neutrophil 4"))
+
+neutro <- AddMetaData(neutro, metadata = label.subset)
+
+DimPlot(neutro, group.by = "label.subset", cols = cols) + theme(plot.title = element_blank())
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Neutrophils/UMAP/umap_subset.pdf", width = 6, height = 4.5, units = "in")
+```
+
+# bcell clusters
+```{r}
+bcell <- subset(lung9s3, subset = label.main_new == "B cells")
+
+#redo normalizations and clustering 
+bcell <- FindVariableFeatures(bcell, verbose = F)
+bcell <- ScaleData(bcell, verbose = F)
+bcell <- NormalizeData(bcell,  verbose = F)
+bcell <- RunPCA(bcell, verbose = F, npcs = 20)
+bcell <- RunUMAP(bcell, dims = 1:15, verbose = F)
+bcell <- FindNeighbors(bcell, dims = 1:15)
+bcell <- FindClusters(bcell, resolution = 0.5)
+
+DimPlot(bcell)
+
+#label bcell subsets
+label.subset <- bcell@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "B1", ifelse(seurat_clusters == 1, "B2", ifelse(seurat_clusters == 2, "B3", ifelse(seurat_clusters == 3, "B4", ifelse(seurat_clusters == 4, "B5", ifelse(seurat_clusters == 5, "B6", ifelse(seurat_clusters == 6, "B7", ifelse(seurat_clusters == 7, "B8", ifelse(seurat_clusters == 8, "B9", "B10")))))))))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8", "B9", "B10"))
+
+bcell <- AddMetaData(bcell, metadata = label.subset)
+
+DimPlot(bcell, group.by = "label.subset", cols = cols) + theme(plot.title = element_blank())
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/B cells/UMAP/umap_subset.pdf", width = 6, height = 4.5, units = "in")
+
+```
+
+#Cellchat AM and T cell subsets
+```{r}
+macrotcell_merged <- merge(macro, tcell)
+macrotcell_merged <- merge(macrotcell_merged, mono)
+macrotcell_merged$label.subset <- factor(macrotcell_merged$label.subset, levels = c("AM 1", "AM 2", "AM 3", "IM", "CD4+ T Act", "CD4+ T Memory", "CD4+ T Naive", "CD8+ T Act", "CD8+ T Memory", "CD8+ T Naive", "Mono1", "Mono2", "Mono3"))
+```
+
+#CellChat analysis 10122022
+```{r CellChat labelmain}
+library(CellChat)
+library(RColorBrewer)
+
+cellchat_Rv <- PrepareCellchatdata(macrotcell_merged, group = "WT Mtb", groupby = "label.subset", species = "mouse", groupcol = "Group", pvalthresh = 0.05)
+
+cellchat_Hip1 <- PrepareCellchatdata(macrotcell_merged, group = "hip1 Mut", groupby = "label.subset", species = "mouse", groupcol = "Group", pvalthresh = 0.05)
+
+# Create list of cellchat objects:
+object_list <- list(cellchat_Rv, cellchat_Hip1)
+saveRDS(object_list,"rds_obs/cellchat_macrotcellsmono_list_label.subset_Jun202024.rds")
+
+# Merge cellchat objects:
+cellchat <- mergeCellChat(object_list, add.names = c("WT Mtb", "hip1 Mut"))
+
+#saveRDS(cellchat, file = 'cellchat_object_merged.rds')
+
+rankNet(cellchat, mode = "comparison", comparison = c(1,2), stacked = T, do.stat = F, color.use = c("#E41A1C", "#377EB8")) + theme(legend.position = "bottom", legend.direction = "horizontal", axis.text.y = element_text(size = 12))
+
+#Nov 1 2024, filter the pathways of interest
+rankNet(cellchat, mode = "comparison", comparison = c(1,2), stacked = T, do.stat = F, color.use = c("#E41A1C", "#377EB8"), signaling = c("ANGPTL", "Prostaglandin", "12oxoLTB4", "ApoE", "VEGF", "Cholestrol", "SEMA3", "MHC-II", "CD6", "CD200", "CXCL", "TNF", "CD40", "BST2", "L1CAM")) + theme(legend.position = "bottom", legend.direction = "horizontal", axis.text.y = element_text(size = 12))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/11.Nov2024-PB/CellChat/relative_info_flow_RV_hip1_macrotcellmono_filtered.pdf", width = 6, height = 5, units = "in")
+
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Cellchat/relative_info_flow_RV_hip1_macrotcellmono.pdf", width = 6, height = 9)
+
+for (i in cellchat_Hip1@netP$pathways) {
+  pdf(paste("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Cellchat/hip1_macromonotcell/hip1_", i, ".pdf", sep = ""), width = 5.2, height = 5.2)
+  netVisual_aggregate(cellchat_Hip1, signaling = i, layout = "circle", pt.title = 2, title.space = 0, arrow.size = 0.6, vertex.label.cex = 1, margin = 0)
+  dev.off()
+}
+
+for (i in cellchat_Rv@netP$pathways) {
+  pdf(paste("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Cellchat/Rv_macromonotcell/Rv_", i, ".pdf", sep = ""), width = 5.2, height = 5.2)
+  netVisual_aggregate(cellchat_Rv, signaling = i, layout = "circle", pt.title = 2, title.space = 0, arrow.size = 0.6, vertex.label.cex = 1, margin = 0)
+  dev.off()
+}
+
+netVisual_aggregate(cellchat_Rv, signaling = "ANGPTL", layout = "circle", pt.title = 2, title.space = 0, arrow.size = 0.6, vertex.label.cex = 1, margin = 0)
+
+test <- netAnalysis_contribution(cellchat_Hip1, signaling = "TNF")
+test <- test$data
+levels(test$name)
+```
+
+
+```{r}
+svg("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/cellchat_Rv_macromonotcell_TNF.svg", width = 5.2, height = 5.2)
+netVisual_aggregate(cellchat_Hip1, signaling = "TNF", layout = "circle", pt.title = 2, title.space = 0, arrow.size = 0, vertex.label.cex = 1, margin = 0, edge.width.max = 0)
+dev.off()
+
+netAnalysis_contribution(cellchat_Hip1, signaling = "CD200")
+```
+
+
+```{r}
+goi <- c("Trem2", "Tyrobp", "Mertk")
+
+countdata <- FetchData(object = macro, layer = "data", vars = goi) %>% rownames_to_column("Cell")
+
+metadata <- macro@meta.data %>% 
+  select(Group, label.subset) %>% rownames_to_column("Cell")
+
+metadata <- merge(metadata, countdata, by = "Cell")
+
+plotdat <- melt(metadata, id.vars = c("Cell", "Group", "label.subset"))
+plotdat$variable <- factor(plotdat$variable, levels = goi)
+plotdat <- plotdat[plotdat$Group != "Uninfected",]
+plotlist <- split(plotdat, f = plotdat$variable)
+
+plotlist <- lapply(plotlist, function(x){
+  ggplot(x, aes(x = label.subset, y = value, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width", position = "dodge") + ggpubr::stat_compare_means(label = "p.signif") + scale_fill_manual(values = cols) + theme_Publication() + labs(title = unique(x$variable)) + theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,0,0,0, "cm")), plot.title = element_text(hjust = 0.5))
+})
+plotlist[[1]] + plotlist[[2]] + plotlist[[3]] + plot_layout(guides = "collect") & theme(legend.position = "bottom")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/2. Macrophage subsets/trem2_dap12_mertk.png", width = 10, height = 5, units = "in")
+
+```
+
+#load macro adata
+```{r}
+macro_adata <- readRDS("velocyto_files/macro_adata_aug262024.rds")
+```
+
+
+# Trajectory analysis
+```{r}
+library(monocle3)
+library(SeuratWrappers)
+
+macro_cds <- as.cell_data_set(macro_adata)
+macro_cds <- cluster_cells(cds = macro_cds, reduction_method = "UMAP", 
+                       cluster_method = "louvain", k = 20)
+num_clust <- clusters(macro_cds)
+table(num_clust)
+macro_cds <- learn_graph(macro_cds, use_partition = F)
+
+set.seed(101010)
+plot_cells(macro_cds, color_cells_by = "cluster", label_groups_by_cluster = FALSE,  label_branch_points = F, label_roots = T, label_leaves = F, group_label_size = 5)
+
+macro_cds <- order_cells(macro_cds, reduction_method = "UMAP", root_cells = colnames(macro_cds[, clusters(macro_cds) %in% c(14, 11, 12)]))
+
+plotdat = macro_cds[,rownames(macro_adata@meta.data[macro_adata@meta.data$Group != "Uninfected",])]
+plotdat@colData$Group <- factor(plotdat@colData$Group, levels = c("Rv", "Hip1"))
+
+plot_cells(cds = plotdat, color_cells_by = "pseudotime", show_trajectory_graph = TRUE, cell_size = 1, trajectory_graph_color = "black", trajectory_graph_segment_size = 1.2, label_roots = F, label_leaves = F, label_branch_points = F, alpha = 0.5) 
+#ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/10. Oct2024-PB/psedotime_AM1_node.pdf", width = 5.2, height = 4.1, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/psedotime_AM1_node.pdf", width = 5.2, height = 4.1, units = "in")
+
+DimPlot(macro, group.by = "label.subset", cols = cols)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Macrophage subsets/UMAP/umap_labelsubset.pdf", width = 5.2, height = 4.1, units = "in")
+```
+
+# Trajectory heatmap
+```{r}
+library(tradeSeq)
+library(monocle3)
+library(data.table)
+library(reticulate)
+library(slingshot)
+library(pheatmap)
+
+goi <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_TNFA_SIGNALING_VIA_NFKB",]
+goi <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_IL6_JAK_STAT3_SIGNALING",]
+goi <- all_gene_sets[all_gene_sets$gs_name == "REACTOME_INTERLEUKIN_17_SIGNALING",]
+goi <- all_gene_sets[all_gene_sets$gs_name == "REACTOME_INTERLEUKIN_1_FAMILY_SIGNALING",]
+
+goi_mito <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi_mito <- unique(as.character(goi_mito))
+
+#LASSO
+goi_lasso <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi_lasso <- goi_lasso$V1
+goi_lasso <- gsub("`", "", goi_lasso)
+
+goi <- unique(goi$gene_symbol)
+
+DimPlot(macro, group.by = "label.subset", cols = cols, split.by = "Group")
+```
+
+#add UMAP cell embeddings to macro
+```{r}
+updated_umap <- macro_adata[['umap']]@cell.embeddings
+rownames(updated_umap) <- unname(macro_adata$barcode_orig)
+
+test <- macro
+test[["umap"]] <- CreateDimReducObject(embeddings = updated_umap, assay = "RNA", global = T)
+DimPlot(test, reduction = "umap")
+```
+
+
+```{r}
+macro_sce <- as.SingleCellExperiment(test)
+macro_sce <- slingshot(macro_sce, reducedDim = 'UMAP', clusterLabels = colData(macro_sce)$label_subset, approx_points = 150, start.clus = 'AM 1')
+
+singleCellTK::plotUMAP(macro_sce, colorBy = "slingPseudotime_1")
+
+# all_gene_sets = msigdbr(species = "Mus musculus")
+# goi_oxphos <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_OXIDATIVE_PHOSPHORYLATION",]
+# goi_oxphos <- goi_oxphos$gene_symbol
+# goi_oxphos <- goi_oxphos[!goi_oxphos %in% c("Atp5pb", "Ndufb1")]
+# 
+# goi_fao <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_FATTY_ACID_METABOLISM",]
+# goi_fao <- goi_fao$gene_symbol
+# goi_fao <- goi_fao[!goi_fao %in% c("H2az1", "Il4i1b")]
+# goi_fao <- unique(goi_fao)
+
+set.seed(3)
+macro_sce <- fitGAM(macro_sce, conditions = factor(colData(macro_sce)$Group), nknots = 5, genes = goi_lasso_ver2)
+```
+
+```{r}
+yhatSmooth <- predictSmooth(macro_sce, gene = goi_mito, nPoints = 150, tidy = F)
+yhatSmooth <- yhatSmooth[,grep("lineage1", colnames(yhatSmooth))]
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+```
+
+```{r}
+paletteLength <- 100
+myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
+# length(breaks) == length(paletteLength) + 1
+# use floor and ceiling to deal with even/odd length pallettelengths
+myBreaks <- c(seq(min(yhatSmoothScaled), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(yhatSmoothScaled)/paletteLength, max(yhatSmoothScaled), length.out=floor(paletteLength/2)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/pseudotime_hip1_lassosig_lineage2_AM1node.pdf", width = 8, height = 6)
+Heatmap(yhatSmoothScaled[, 151:300], name = "Expression",  
+        #column_split = rep(1:12, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 12),
+        column_gap = unit(1, "mm"),
+        cluster_rows = F,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 12),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = F,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+
+heatSmooth_Rv <- pheatmap(yhatSmoothScaled[, 151:300], cluster_cols = FALSE, cluster_rows = F,show_rownames = F, show_colnames = FALSE, main = "WT Mtb", legend = FALSE, silent = F, color = myColor, breaks = myBreaks, border_color = NA)
+
+matchingHeatmap_hip1 <- pheatmap(yhatSmoothScaled[, 301:450], cluster_cols = FALSE, cluster_rows = FALSE, show_rownames = T, show_colnames = FALSE, main = "hip1 Mut", legend = F, silent = F, color = myColor, breaks = myBreaks, border_color = NA)
+
+png("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Trajectory/pseudotime_mitosig_lineage3_AM1node.png", width = 10, height = 5, units = "in", res = 600)
+gridExtra::grid.arrange(heatSmooth_Rv[[4]], matchingHeatmap_hip1[[4]], ncol = 2, widths = c(3.9/8, 4.1/8))
+dev.off()
+
+png("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Macrophage subsets/Trajectory/pseudotime_lassosig_lineage1_AM1node.png", width = 10, height = 10, units = "in", res = 600)
+gridExtra::grid.arrange(heatSmooth_Rv[[4]], matchingHeatmap_hip1[[4]], ncol = 2, widths = c(3.9/8, 4.1/8))
+dev.off()
+
+plotdat <- subset(am, subset = label.subset != "AM 5")
+plotdat$label.subset <- factor(plotdat$label.subset, levels = c("AM 2", "AM 3", "AM 1", "AM 4"))
+DoHeatmap(plotdat, group.by = "label.subset", features = "TNF", angle = 0, hjust = 0.5, vjust = 0.08, group.bar.height = 0.06)
+ggsave("Manuscript_bioxiv/Figures/dump/amsubset_bars.pdf", width = 8, height = 3, units = "in")
+```
+
+#load monocyte object from python
+```{r}
+library(sceasy)
+library(reticulate)
+
+convertFormat("velocyto_files/mono_adata_aug252024.h5ad", from="anndata", to="seurat", outFile='rds_obs/mono_adata_jan172025.rds')
+
+mono_adata <- readRDS("rds_obs/mono_adata_jan172025.rds")
+```
+
+
+# Trajectory analysis Monocyte trajectory
+```{r}
+library(monocle3)
+library(SeuratWrappers)
+
+mono_cds <- as.cell_data_set(mono_adata)
+mono_cds <- cluster_cells(cds = mono_cds, reduction_method = "UMAP", 
+                       cluster_method = "louvain", k = 20)
+num_clust <- clusters(mono_cds)
+table(num_clust)
+mono_cds <- learn_graph(mono_cds, use_partition = F)
+
+plot_cells(mono_cds, color_cells_by = "cluster", label_groups_by_cluster = FALSE,  label_branch_points = F, label_roots = T, label_leaves = F, group_label_size = 5)
+
+#set cluster 8 which containes proliferating cells as the root
+mono_cds <- order_cells(mono_cds, reduction_method = "UMAP", root_cells = colnames(mono_cds[, clusters(mono_cds) %in% c(23, 12, 13)]))
+
+plotdat = mono_cds[,rownames(mono_adata@meta.data[mono_adata@meta.data$Group != "Uninfected",])]
+plotdat@colData$Group <- factor(plotdat@colData$Group, levels = c("Rv", "Hip1"))
+
+plot_cells(cds = plotdat, color_cells_by = "pseudotime", show_trajectory_graph = TRUE, cell_size = 1, trajectory_graph_color = "black", trajectory_graph_segment_size = 1.2, label_roots = F, label_leaves = F, label_branch_points = F, alpha = 0.5) 
+#ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/Trajectory/psedotime_mono2_node.pdf", width = 5.2, height = 4.1, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/13. Jan2025-PB/psedotime_mono2_node.pdf", width = 5.2, height = 4.1, units = "in")
+
+
+DimPlot(mono, group.by = "label.subset", cols = cols)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/monophage subsets/UMAP/umap_labelsubset.pdf", width = 5.2, height = 4.1, units = "in")
+```
+
+# Trajectory heatmap
+```{r}
+library(tradeSeq)
+library(monocle3)
+library(data.table)
+library(reticulate)
+library(slingshot)
+library(pheatmap)
+
+goi_mito <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi_mito <- unique(as.character(goi_mito))
+
+#LASSO
+goi_lasso <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi_lasso <- goi_lasso$V1
+goi_lasso <- gsub("`", "", goi_lasso)
+
+DimPlot(mono, group.by = "label.subset", cols = cols, split.by = "Group")
+```
+
+```{r}
+mono_sce <- as.SingleCellExperiment(mono_adata)
+mono_sce <- slingshot(mono_sce, reducedDim = 'UMAP', clusterLabels = colData(mono_sce)$label_subset, approx_points = 150, start.clus = 'Mono2')
+
+singleCellTK::plotUMAP(mono_sce, colorBy = "slingPseudotime_1")
+
+# all_gene_sets = msigdbr(species = "Mus musculus")
+# goi_oxphos <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_OXIDATIVE_PHOSPHORYLATION",]
+# goi_oxphos <- goi_oxphos$gene_symbol
+# goi_oxphos <- goi_oxphos[!goi_oxphos %in% c("Atp5pb", "Ndufb1")]
+# 
+# goi_fao <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_FATTY_ACID_METABOLISM",]
+# goi_fao <- goi_fao$gene_symbol
+# goi_fao <- goi_fao[!goi_fao %in% c("H2az1", "Il4i1b")]
+# goi_fao <- unique(goi_fao)
+
+set.seed(3)
+mono_sce <- fitGAM(mono_sce, conditions = factor(colData(mono_sce)$Group), nknots = 5, genes = goi_lasso_ver2)
+```
+
+```{r}
+condRes <- conditionTest(mono_sce, l2fc = log2(1.3))
+condRes$padj <- p.adjust(condRes$pvalue, "fdr")
+conditionGenes <- rownames(condRes)[condRes$pvalue <= 0.05]
+conditionGenes <- conditionGenes[!is.na(conditionGenes)]
+
+yhatSmooth <- predictSmooth(mono_sce, gene = goi_lasso_ver2, nPoints = 150, tidy = F)
+yhatSmooth <- yhatSmooth[,grep("lineage1", colnames(yhatSmooth))]
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+```
+
+```{r}
+paletteLength <- 100
+myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
+# length(breaks) == length(paletteLength) + 1
+# use floor and ceiling to deal with even/odd length pallettelengths
+myBreaks <- c(seq(min(yhatSmoothScaled), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(yhatSmoothScaled)/paletteLength, max(yhatSmoothScaled), length.out=floor(paletteLength/2)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/Trajectory/pseudotime_hip1_lassosig.pdf", width = 8, height = 7)
+Heatmap(yhatSmoothScaled[, 301:450], name = "Expression",  
+        #column_split = rep(1:12, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 12),
+        column_gap = unit(1, "mm"),
+        cluster_rows = F,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 12),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = F,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+
+heatSmooth_Rv <- pheatmap(yhatSmoothScaled[, 151:300], cluster_cols = FALSE, cluster_rows = F,show_rownames = F, show_colnames = FALSE, main = "WT Mtb", legend = FALSE, silent = F, color = myColor, breaks = myBreaks, border_color = NA)
+
+matchingHeatmap_hip1 <- pheatmap(yhatSmoothScaled[, 301:450], cluster_cols = FALSE, cluster_rows = FALSE, show_rownames = T, show_colnames = FALSE, main = "hip1 Mut", legend = F, silent = F, color = myColor, breaks = myBreaks, border_color = NA)
+
+png("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/Trajectory/pseudotime_mitosig_lineage1_mono2node.png", width = 10, height = 5, units = "in", res = 600)
+gridExtra::grid.arrange(heatSmooth_Rv[[4]], matchingHeatmap_hip1[[4]], ncol = 2, widths = c(3.9/8, 4.1/8))
+dev.off()
+
+png("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Monocyte subsets/Trajectory/pseudotime_lassosig_lineage1_mono2node.png", width = 10, height = 10, units = "in", res = 600)
+gridExtra::grid.arrange(heatSmooth_Rv[[4]], matchingHeatmap_hip1[[4]], ncol = 2, widths = c(3.9/8, 4.1/8))
+dev.off()
+
+plotdat <- subset(am, subset = label.subset != "AM 5")
+plotdat$label.subset <- factor(plotdat$label.subset, levels = c("AM 2", "AM 3", "AM 1", "AM 4"))
+DoHeatmap(plotdat, group.by = "label.subset", features = "TNF", angle = 0, hjust = 0.5, vjust = 0.08, group.bar.height = 0.06)
+ggsave("Manuscript_bioxiv/Figures/dump/amsubset_bars.pdf", width = 8, height = 3, units = "in")
+```
+
+# Trajectory analysis tcell trajectory
+```{r}
+tcell_cds <- as.cell_data_set(tcell)
+tcell_cds <- cluster_cells(cds = tcell_cds, reduction_method = "UMAP", 
+                       cluster_method = "louvain", k = 20)
+num_clust <- clusters(tcell_cds)
+table(num_clust)
+tcell_cds <- learn_graph(tcell_cds, use_partition = F)
+
+plot_cells(tcell_cds, color_cells_by = "cluster", label_groups_by_cluster = FALSE,  label_branch_points = F, label_roots = T, label_leaves = F, group_label_size = 5)
+
+#set cluster 8 which containes proliferating cells as the root
+tcell_cds <- order_cells(tcell_cds, reduction_method = "UMAP", root_cells = colnames(tcell_cds[, clusters(tcell_cds) %in% c(25,26,27)]))
+
+plotdat = tcell_cds[,rownames(tcell@meta.data[tcell@meta.data$Group != "Uninfected",])]
+plotdat@colData$Group <- factor(plotdat@colData$Group, levels = c("Rv", "Hip1"))
+
+plot_cells(cds = plotdat, color_cells_by = "pseudotime", show_trajectory_graph = TRUE, cell_size = 1, trajectory_graph_color = "black", trajectory_graph_segment_size = 1, label_roots = F, label_leaves = F, label_branch_points = F) + facet_wrap(.~Group, nrow = 1, scales = "free")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Tcell subsets/Trajectory/psedotime_tcell_naivenode.pdf", width = 5.2, height = 4.1, units = "in")
+
+DimPlot(tcell, group.by = "label.subset", cols = cols)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/tcellphage subsets/UMAP/umap_labelsubset.pdf", width = 5.2, height = 4.1, units = "in")
+```
+
+# Trajectory heatmap
+```{r}
+library(tradeSeq)
+library(tcellcle3)
+library(data.table)
+library(reticulate)
+library(slingshot)
+library(pheatmap)
+
+goi_mito <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi_mito <- unique(as.character(goi_mito))
+
+#LASSO
+goi_lasso <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi_lasso <- goi_lasso$V1
+goi_lasso <- gsub("`", "", goi_lasso)
+
+DimPlot(tcell, group.by = "label.subset", cols = cols, split.by = "Group")
+```
+
+```{r}
+tcell_sce <- as.SingleCellExperiment(tcell)
+tcell_sce <- slingshot(tcell_sce, reducedDim = 'UMAP', clusterLabels = colData(tcell_sce)$label.subset, approx_points = 150, start.clus = c("CD4+ T Naive"))
+
+#colnames(colData(am_sce))
+#slingPseudotime_1 slingPseudotime_2
+singleCellTK::plotUMAP(tcell_sce, colorBy = "slingPseudotime_1")
+#am_sce$slingPseudotime_2 <- NULL
+#ks.test(slingPseudotime(am_sce)[colData(am_sce)$hiv_timepoint == "HC+Mtb", 1], slingPseudotime(am_sce)[colData(am_sce)$hiv_timepoint == "PLWH+Mtb", 1])
+
+set.seed(3)
+tcell_sce <- fitGAM(tcell_sce, conditions = factor(colData(tcell_sce)$Group), nknots = 5, genes = goi_mito)
+```
+
+```{r}
+#plotSmoothers(am_sce, assays(am_sce)$counts, gene = "TNF", alpha = 1, border = TRUE) + ggtitle("TNF")
+condRes <- conditionTest(tcell_sce, l2fc = log2(1.3))
+condRes$padj <- p.adjust(condRes$pvalue, "fdr")
+conditionGenes <- rownames(condRes)[condRes$pvalue <= 0.05]
+conditionGenes <- conditionGenes[!is.na(conditionGenes)]
+#conditionGenes <- c(conditionGenes, "TNF")
+
+yhatSmooth <- predictSmooth(tcell_sce, gene = goi_mito, nPoints = 150, tidy = F)
+yhatSmooth <- yhatSmooth[,grep("lineage2", colnames(yhatSmooth))]
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+```
+
+```{r}
+paletteLength <- 100
+myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
+# length(breaks) == length(paletteLength) + 1
+# use floor and ceiling to deal with even/odd length pallettelengths
+myBreaks <- c(seq(min(yhatSmoothScaled), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(yhatSmoothScaled)/paletteLength, max(yhatSmoothScaled), length.out=floor(paletteLength/2)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Tcell subsets/Trajectory/pseudotime_hip1_mitosig_lineage2_cd4_naive_node.pdf", width = 8, height = 7)
+Heatmap(yhatSmoothScaled[, 301:450], name = "Expression",  
+        #column_split = rep(1:12, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 12),
+        column_gap = unit(1, "mm"),
+        cluster_rows = F,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 12),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = F,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+
+heatSmooth_Rv <- pheatmap(yhatSmoothScaled[, 151:300], cluster_cols = FALSE, cluster_rows = F,show_rownames = F, show_colnames = FALSE, main = "WT Mtb", legend = FALSE, silent = F, color = myColor, breaks = myBreaks, border_color = NA)
+
+matchingHeatmap_hip1 <- pheatmap(yhatSmoothScaled[, 301:450], cluster_cols = FALSE, cluster_rows = FALSE, show_rownames = T, show_colnames = FALSE, main = "hip1 Mut", legend = F, silent = F, color = myColor, breaks = myBreaks, border_color = NA)
+
+png("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Tcell subsets/Trajectory/", width = 10, height = 5, units = "in", res = 600)
+gridExtra::grid.arrange(heatSmooth_Rv[[4]], matchingHeatmap_hip1[[4]], ncol = 2, widths = c(3.9/8, 4.1/8))
+dev.off()
+
+png("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Tcell subsets/Trajectory/pseudotime_lassosig_lineage2_naivenode.png", width = 10, height = 10, units = "in", res = 600)
+gridExtra::grid.arrange(heatSmooth_Rv[[4]], matchingHeatmap_hip1[[4]], ncol = 2, widths = c(3.9/8, 4.1/8))
+dev.off()
+
+plotdat <- subset(am, subset = label.subset != "AM 5")
+plotdat$label.subset <- factor(plotdat$label.subset, levels = c("AM 2", "AM 3", "AM 1", "AM 4"))
+DoHeatmap(plotdat, group.by = "label.subset", features = "TNF", angle = 0, hjust = 0.5, vjust = 0.08, group.bar.height = 0.06)
+ggsave("Manuscript_bioxiv/Figures/dump/amsubset_bars.pdf", width = 8, height = 3, units = "in")
+```
+
+```{r}
+plotdat <- subset(lung9s3, subset = Group != "Uninfected")
+plotdat <- subset(plotdat, `mt-Atp8`>0 | `mt-Nd4l`>0 | `mt-Nd1`>0 | `mt-Nd2`>0 | `Hbb-bs`>0 | Gm47283>0 | `mt-Nd4`>0 | `mt-Co2`>0 | `mt-Nd5`>0 | `mt-Nd3`>0 | `mt-Cytb`>0 | `Hba-a2`>0 | Myl2>0 | `Hba-a1`>0 | `Hbb-bt`>0 | Tnnt2>0 | Actc1>0 | Myl3>0 | Tnni3>0 | Dynlt1b>0 | Fabp3>0 | Mb>0 | Tnnc1>0 | Gm21887>0 | Cyp26b1>0 | Slfn1>0 | Myoz2>0 | Ckm>0 | Mgll>0 | Apobr>0 | Myl7>0 | Csrp3>0 | Myh6>0 | Pln>0 | Tmem181a>0 | Abhd17c>0 | Stk26>0 | Nppa>0 | Aimp2>0 | Gm10800>0 | Sftpc>0 | Cxcr4>0 | Hilpda>0 | Cd69>0 | Gm26870>0 | Ighg1>0 | Rgcc>0 | Irs2>0 | Trib2>0 | P2ry10>0 | Gm10801>0 | Rgs1>0 | Gm10721>0 | Cyth3>0 | Azin1>0 | Zbtb10>0 | Lrrc8a>0 | Hspa1a>0 | Ly6k>0 | Tprkb>0 | `1700017B05Rik`>0 | Socs1>0)
+
+to_remove <- plotdat@meta.data
+rv_cells <- to_remove[to_remove$Group == "WT Mtb",]
+hip1_cells <- to_remove[to_remove$Group == "hip1 Mut",]
+set.seed(101010)
+rv_cells <- rv_cells[sample(nrow(rv_cells), nrow(hip1_cells)),]
+to_keep <- c(rownames(rv_cells), rownames(hip1_cells))
+
+plotdat@meta.data$cellid <- rownames(plotdat@meta.data)
+plotdat <- subset(plotdat, subset = cellid %in% to_keep)
+
+plotdat <- DietSeurat(plotdat)
+plotdat <- FindVariableFeatures(plotdat, verbose = F)
+plotdat <- ScaleData(plotdat, verbose = F, features = rownames(plotdat))
+plotdat <- NormalizeData(plotdat,  verbose = F)
+plotdat <- RunPCA(plotdat, verbose = F, npcs = 20)
+plotdat <- RunUMAP(plotdat, dims = 1:15, verbose = F)
+DoHeatmap(plotdat, features = c(genes_up$GeneID, genes_down$GeneID))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/globalheatmap_degs.png", width = 6, height = 8, units = "in")
+```
+
+# Trajectory analysis
+```{r}
+library(monocle3)
+library(SeuratWrappers)
+
+neutro_cds <- as.cell_data_set(neutro)
+neutro_cds <- cluster_cells(cds = neutro_cds, reduction_method = "UMAP", 
+                       cluster_method = "louvain", k = 20)
+num_clust <- clusters(neutro_cds)
+table(num_clust)
+neutro_cds <- learn_graph(neutro_cds, use_partition = F)
+
+plot_cells(neutro_cds, color_cells_by = "cluster", label_groups_by_cluster = FALSE,  label_branch_points = F, label_roots = T, label_leaves = F, group_label_size = 5)
+
+#set cluster 8 which containes proliferating cells as the root
+neutro_cds <- order_cells(neutro_cds, reduction_method = "UMAP", root_cells = colnames(neutro_cds[, clusters(neutro_cds) == 7]))
+
+plotdat = neutro_cds[,rownames(neutro@meta.data[neutro@meta.data$Group != "Uninfected",])]
+plotdat@colData$Group <- factor(plotdat@colData$Group, levels = c("Rv", "Hip1"))
+
+plot_cells(cds = plotdat, color_cells_by = "pseudotime", show_trajectory_graph = TRUE, cell_size = 1, trajectory_graph_color = "black", trajectory_graph_segment_size = 1, label_roots = F, label_leaves = F, label_branch_points = F) + facet_wrap(.~Group, nrow = 1, scales = "free")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Neutrophils/trajectory/psedotime_cluster1_node.pdf", width = 5.2, height = 4.1, units = "in")
+```
+
+# Trajectory heatmap
+```{r}
+library(tradeSeq)
+library(monocle3)
+library(data.table)
+library(reticulate)
+library(slingshot)
+library(pheatmap)
+
+neutro_sce <- as.SingleCellExperiment(neutro)
+neutro_sce <- slingshot(neutro_sce, reducedDim = 'UMAP', clusterLabels = colData(neutro_sce)$label.subset, approx_points = 150, start.clus = 'Neutrophil 2')
+
+singleCellTK::plotUMAP(neutro_sce, colorBy = "slingPseudotime_2")
+
+set.seed(3)
+neutro_sce <- fitGAM(neutro_sce, conditions = factor(colData(neutro_sce)$Group), nknots = 5, genes = goi_lasso_ver2)
+```
+
+```{r}
+#plotSmoothers(am_sce, assays(am_sce)$counts, gene = "TNF", alpha = 1, border = TRUE) + ggtitle("TNF")
+condRes <- conditionTest(neutro_sce, l2fc = log2(1.3))
+condRes$padj <- p.adjust(condRes$pvalue, "fdr")
+conditionGenes <- rownames(condRes)[condRes$pvalue <= 0.05]
+conditionGenes <- conditionGenes[!is.na(conditionGenes)]
+#conditionGenes <- c(conditionGenes, "TNF")
+
+yhatSmooth <- predictSmooth(neutro_sce, gene = goi_lasso_ver2, nPoints = 150, tidy = F)
+yhatSmooth <- yhatSmooth[,grep("lineage2", colnames(yhatSmooth))]
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+```
+
+```{r}
+paletteLength <- 100
+myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
+# length(breaks) == length(paletteLength) + 1
+# use floor and ceiling to deal with even/odd length pallettelengths
+myBreaks <- c(seq(min(yhatSmoothScaled), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(yhatSmoothScaled)/paletteLength, max(yhatSmoothScaled), length.out=floor(paletteLength/2)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Neutrophils/trajectory/pseudotime_rv_lassosig_lineage2_N1node.pdf", width = 8, height = 6)
+Heatmap(yhatSmoothScaled[, 151:300], name = "Expression",  
+        #column_split = rep(1:12, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 12),
+        column_gap = unit(1, "mm"),
+        cluster_rows = F,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 12),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = F,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+# Trajectory analysis
+```{r}
+library(monocle3)
+library(SeuratWrappers)
+
+bcell_cds <- as.cell_data_set(bcell)
+bcell_cds <- cluster_cells(cds = bcell_cds, reduction_method = "UMAP", 
+                       cluster_method = "louvain", k = 20)
+num_clust <- clusters(bcell_cds)
+table(num_clust)
+bcell_cds <- learn_graph(bcell_cds, use_partition = F)
+
+plot_cells(bcell_cds, color_cells_by = "cluster", label_groups_by_cluster = FALSE,  label_branch_points = F, label_roots = T, label_leaves = F, group_label_size = 5)
+
+#set cluster 8 which containes proliferating cells as the root
+bcell_cds <- order_cells(bcell_cds, reduction_method = "UMAP", root_cells = colnames(bcell_cds[, clusters(bcell_cds) == 9]))
+
+plotdat = bcell_cds[,rownames(bcell@meta.data[bcell@meta.data$Group != "Uninfected",])]
+plotdat@colData$Group <- factor(plotdat@colData$Group, levels = c("Rv", "Hip1"))
+
+plot_cells(cds = plotdat, color_cells_by = "pseudotime", show_trajectory_graph = TRUE, cell_size = 1, trajectory_graph_color = "black", trajectory_graph_segment_size = 1, label_roots = F, label_leaves = F, label_branch_points = F) + facet_wrap(.~Group, nrow = 1, scales = "free")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/B cells/trajectory/psedotime_cluster9_node.pdf", width = 5.2, height = 4.1, units = "in")
+```
+
+# Trajectory heatmap
+```{r}
+library(tradeSeq)
+library(monocle3)
+library(data.table)
+library(reticulate)
+library(slingshot)
+library(pheatmap)
+
+bcell_sce <- as.SingleCellExperiment(bcell)
+bcell_sce <- slingshot(bcell_sce, reducedDim = 'UMAP', clusterLabels = colData(bcell_sce)$label.subset, approx_points = 150, start.clus = 'B3')
+
+singleCellTK::plotUMAP(bcell_sce, colorBy = "slingPseudotime_5")
+
+set.seed(3)
+bcell_sce <- fitGAM(bcell_sce, conditions = factor(colData(bcell_sce)$Group), nknots = 5, genes = goi_lasso_ver2)
+```
+
+```{r}
+#plotSmoothers(am_sce, assays(am_sce)$counts, gene = "TNF", alpha = 1, border = TRUE) + ggtitle("TNF")
+condRes <- conditionTest(bcell_sce, l2fc = log2(1.3))
+condRes$padj <- p.adjust(condRes$pvalue, "fdr")
+conditionGenes <- rownames(condRes)[condRes$pvalue <= 0.05]
+conditionGenes <- conditionGenes[!is.na(conditionGenes)]
+#conditionGenes <- c(conditionGenes, "TNF")
+
+yhatSmooth <- predictSmooth(bcell_sce, gene = goi_lasso_ver2, nPoints = 150, tidy = F)
+yhatSmooth <- yhatSmooth[,grep("lineage1", colnames(yhatSmooth))]
+yhatSmoothScaled <- t(scale(t(yhatSmooth)))
+```
+
+```{r}
+paletteLength <- 100
+myColor <- colorRampPalette(c("blue", "white", "red"))(paletteLength)
+# length(breaks) == length(paletteLength) + 1
+# use floor and ceiling to deal with even/odd length pallettelengths
+myBreaks <- c(seq(min(yhatSmoothScaled), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(yhatSmoothScaled)/paletteLength, max(yhatSmoothScaled), length.out=floor(paletteLength/2)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/bcellphils/trajectory/pseudotime_rv_lassosig_lineage2_N1node.pdf", width = 8, height = 6)
+Heatmap(yhatSmoothScaled[, 151:300], name = "Expression",  
+        #column_split = rep(1:12, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 12),
+        column_gap = unit(1, "mm"),
+        cluster_rows = F,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 12),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = F,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+#Kit asked me to see if there is a siglecf low population in the AMs. And if that population has markers of MDMs
+```{r}
+macro <- subset(lung9s3, subset = label.main == "Macrophages")
+#redo normalizations and clustering 
+macro <- FindVariableFeatures(macro, verbose = F)
+macro <- ScaleData(macro, verbose = F)
+macro <- NormalizeData(macro,  verbose = F)
+macro <- RunPCA(macro, verbose = F, npcs = 20)
+#ElbowPlot(macro)
+macro <- RunUMAP(macro, dims = 1:15, verbose = F)
+macro <- FindNeighbors(macro, dims = 1:15)
+macro <- FindClusters(macro, resolution = 1)
+
+macro$label.subset_group <- paste(macro$label.subset, macro$Group, sep = "_")
+macro <- subset(macro, subset = Group != "Uninfected")
+
+DimPlot(macro, group.by = "seurat_clusters", cols = cols)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/seurat_cluster_macro.pdf", width = 6, height = 5, units = "in")
+
+DotPlot(macro, features = c("Siglecf", "Apoe", "Ccr5", "Itgam", "Ccr2", "Ly6c2", "H2-Ab1", "H2-Eb1", "Marco", "Cx3cr1"), group.by = "seurat_clusters")
+
+DotPlot(macro, features = c("Glul",   "Gfpt2",  "Gclm",   "Gclc", "Me3",  "Me2",  "Me1",   "Ldhb","Ldha", "Suclg2", "Suclg1", "Sdhc",  "Sdhb" ,  "Sdha", "Mdh2", "Mdh1", "Dlst", "Dld", "Gpt2", "Got1",  "Glud1", "Gls", "Slc7a5", "Slc3a2", "Slc1a5", "Slc1a3"), group.by = "label.subset_group") + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/dotplot_glutamine_metabolism_geneset_macrophage.pdf", width = 9, height = 4, units = "in")
+
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+msigdbr_list <- list("glutamine metabolism" = c("Glul",   "Gfpt2",  "Gclm",   "Gclc", "Me3",  "Me2",  "Me1",   "Ldhb","Ldha", "Suclg2", "Suclg1", "Sdhc",  "Sdhb" ,  "Sdha", "Mdh2", "Mdh1", "Dlst", "Dld", "Gpt2", "Got1",  "Glud1", "Gls", "Slc7a5", "Slc3a2", "Slc1a5", "Slc1a3"))
+
+fgsea_genelist = lapply(seq_along(topTables_macro), function(i){
+  x = topTables_macro[[i]]
+  print(names(topTables_macro)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_macro)
+
+plotdat <- bind_rows(fgsea_genelist, .id = "cluster")
+
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway, color = NES)) +
+    geom_point(aes(size = size)) + geom_text(aes(label = paste("p=",round(pval, 2), sep = "")), vjust = -0.5, nudge_y = 0.05, color = "black") + xlab("") + theme_Publication() + scale_color_discrete(drop = F) + scale_x_discrete(drop = F) + scale_color_gradient2(low = '#2166ac', high = '#b2182b') + scale_size(range = c(3, 6)) + theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1), axis.text.y = element_text(size = 10), axis.title.y = element_blank(), plot.title = element_text(size = 12, face = 'bold', hjust = 0.5, vjust = 1), legend.position = 'right', legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/gsea_glutamine_metabolism_geneset_macrophage_hip_vs_wt.pdf", width = 6, height = 3, units = "in")
+```
+
+#load macrophage object from python
+```{r}
+library(sceasy)
+library(reticulate)
+
+convertFormat("velocyto_files/macro_adata_aug262024.h5ad", from="anndata", to="seurat", outFile='macro_adata_aug262024.rds')
+
+macro_adata <- readRDS("velocyto_files/macro_adata_aug262024.rds")
+```
+
+#leiden UMAP
+```{r}
+myplot <- DimPlot(macro_adata, group.by = "label_subset", cols = cols, pt.size = 2)
+myplot[[1]]$layers[[1]]$aes_params$alpha = 0.7
+myplot
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/10. Oct2024-PB/umap_leiden_clusters.pdf", width = 6, height = 5, units = "in")
+
+```
+# Name clusters
+```{r}
+label.subset <- macro_adata@meta.data %>%
+  select(leiden) %>%
+  mutate(label.subset = ifelse(leiden == 4, "AM1", ifelse(leiden == 0, "AM2", ifelse(leiden == 2, "AM3", ifelse(leiden == 1, "AM4", "IM"))))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("AM1", "AM2", "AM3", "AM4", "IM"))
+
+macro_adata <- AddMetaData(macro_adata, metadata = label.subset)
+Idents(macro_adata) <- "label.subset"
+
+myplot <- DimPlot(macro_adata, group.by = "label.subset", cols = cols, pt.size = 2)
+myplot[[1]]$layers[[1]]$aes_params$alpha = 0.7
+myplot
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/umap_label_subset.pdf", width = 6, height = 5, units = "in")
+
+myplot <- DimPlot(macro_adata, group.by = "label.subset", split.by = "Group", cols = cols, pt.size = 2)
+myplot[[1]]$layers[[1]]$aes_params$alpha = 0.7
+myplot
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/umap_label_subset_by_group.pdf", width = 10, height = 5, units = "in")
+```
+
+```{r}
+macro <- subset(lung9s3, subset = label.main == "Macrophages")
+#redo normalizations and clustering 
+macro <- FindVariableFeatures(macro, verbose = F)
+macro <- ScaleData(macro, verbose = F)
+macro <- NormalizeData(macro,  verbose = F)
+macro <- RunPCA(macro, verbose = F, npcs = 20)
+#ElbowPlot(macro)
+macro <- RunUMAP(macro, dims = 1:15, verbose = F)
+macro <- FindNeighbors(macro, dims = 1:15)
+macro <- FindClusters(macro, resolution = 0.1)
+```
+
+# Add the subset info from python on the macro object since the object from python only has filtered genes and not total
+```{r}
+label.subset <- macro_adata@meta.data %>%
+  select(leiden, barcode_orig) %>%
+  mutate(label.subset = ifelse(leiden == 4, "AM1", ifelse(leiden == 0, "AM2", ifelse(leiden == 2, "AM3", ifelse(leiden == 1, "AM4", "IM"))))) %>%
+  select(label.subset, barcode_orig)
+
+rownames(label.subset) <- NULL
+label.subset <- label.subset %>% column_to_rownames("barcode_orig")
+
+macro <- AddMetaData(macro, metadata = label.subset)
+macro$label.subset[is.na(macro$label.subset)] <- "nodata"
+macro <- subset(macro, subset = label.subset != "nodata")
+Idents(macro) <- "label.subset"
+```
+
+```{r}
+topTables_macro_adata <- sapply(as.character(unique(macro$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(macro,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+topTables_macro_adata <- topTables_macro_adata[c("AM1", "AM2", "AM3", "AM4", "IM")]
+
+topmarkersPercluster <- lapply(unique(macro$label.subset), function(x){
+  message(paste("running cluster:", x, sep = ""))
+  cluster_marker <- FindMarkers(macro, ident.1 = x, min.pct = 0.1, only.pos = F)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- unique(macro$label.subset)
+topmarkersPercluster <- topmarkersPercluster[c("AM1", "AM2", "AM3", "AM4", "IM")]
+```
+
+# fgsea
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GOBP", "GOMF", "REACTOME", "KEGG", "HALLMARK")),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+#topmarkersPercluster <- marker_genes
+fgsea_genelist = lapply(seq_along(topTables_macro_adata), function(i){
+  x = topTables_macro_adata[[i]]
+  print(names(topTables_macro_adata)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  set.seed(101010)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset, nPermSimple = 10000)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_macro_adata)
+
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 60)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+write_xlsx(combined_fgsea, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/GSEA/gsea_am_hip1_vs_rv_allpathways.xlsx")
+
+combined_fgsea = bind_rows(combined_fgsea, .id = "cluster")
+
+plotdat <- combined_fgsea
+plotdat <- combined_fgsea[combined_fgsea$pathway %in% c("KEGG_OXIDATIVE_PHOSPHORYLATION", "REACTOME_RESPIRATORY_ELECTRON_TRANSPORT", "GOBP_ATP_SYNTHESIS_COUPLED_ELECTRON_TRANSPORT", "REACTOME_THE_CITRIC_ACID_TCA_CYCLE_AND_RESPIRATORY_ELECTRON_TRANSPORT", "GOBP_NADH_DEHYDROGENASE_COMPLEX_ASSEMBLY", "KEGG_FATTY_ACID_METABOLISM", "GOBP_FATTY_ACID_BETA_OXIDATION", "GOBP_MITOCHONDRION_ORGANIZATION", "GOBP_INTERLEUKIN_8_PRODUCTION", "GOBP_INTERLEUKIN_6_PRODUCTION", "GOBP_T_CELL_MEDIATED_IMMUNITY", "REACTOME_MHC_CLASS_II_ANTIGEN_PRESENTATION", "GOBP_INTERLEUKIN_12_PRODUCTION", "GOBP_POSITIVE_REGULATION_OF_NATURAL_KILLER_CELL_MEDIATED_IMMUNITY", "GOBP_ACTIVATION_OF_NF_KAPPAB_INDUCING_KINASE_ACTIVITY", "GOBP_LYMPHOCYTE_MEDIATED_IMMUNITY", "REACTOME_GLYCOLYSIS", "REACTOME_INTERLEUKIN_12_SIGNALING", "GOBP_MITOCHONDRIAL_CYTOCHROME_C_OXIDASE_ASSEMBLY", "GOMF_TOLL_LIKE_RECEPTOR_BINDING", "GOBP_REGULATION_OF_NEUTROPHIL_ACTIVATION", "GOBP_PRODUCTION_OF_MOLECULAR_MEDIATOR_INVOLVED_IN_INFLAMMATORY_RESPONSE"),]
+#plotdat <- combined_fgsea[grep("mitochond|ATP|oxidative|NADH|TCA|electron|cytokine|interleukin|TNF|IL2|IL6|interferon|tgf|prolif", combined_fgsea$pathway3, ignore.case = T),]
+#plotdat <- plotdat[plotdat$NES >= 0,]
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+plotdat <- plotdat[order(plotdat$cluster),]
+#pathorder <- c(grep("interleukin|cytokine",unique(plotdat$pathway3), invert = T, value = T, ignore.case = T), grep("interleukin|cytokine",unique(plotdat$pathway3), invert = F, value = T, ignore.case = T))
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = unique(plotdat$pathway3))
+plotdat$neglog10pval <- -log10(plotdat$pval)
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(2, 6)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/GSEA/gsea_am_hip1_vs_rv_allpathways.pdf", width = 9, height = 400, limitsize = F, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/GSEA/gsea_am_hip1_vs_rv_allpathways_filtered.pdf", width = 8, height = 6, limitsize = F, units = "in")
+```
+
+# Pathway enrichment of up genes from each AM subset
+```{r}
+goi <- lapply(topmarkersPercluster, function(x){
+  out <- x[x$avg_log2FC > 0 & x$p_val_adj <= 0.05,]
+  out <- out[order(out$avg_log2FC, decreasing = T),]
+  out <- out$GeneID
+})
+
+library(ReactomePA)
+library(AnnotationDbi)
+library(org.Mm.eg.db)
+library(clusterProfiler)
+
+entrez_genes <- lapply(goi, function(x){
+  out <- mapIds(org.Mm.eg.db, keys = x, column = "ENTREZID", keytype = "SYMBOL")
+})
+out_path_reactome <- lapply(entrez_genes, function(x){
+  out <- enrichPathway(gene = x, organism = "mouse")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_kegg <- lapply(entrez_genes, function(x){
+  out <- enrichKEGG(gene = x, organism = "mmu")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+out_path_GO <- lapply(entrez_genes, function(x){
+  out <- enrichGO(gene = x, OrgDb = "org.Mm.eg.db", ont = "ALL")
+  out <- out@result
+  out <- out[out$pvalue <= 0.05,]
+  out <- out[c( "ID", "Description", "GeneRatio", "BgRatio", "pvalue", "p.adjust", "qvalue", "geneID", "Count")]
+})
+
+plotdat <- c(out_path_GO, out_path_kegg, out_path_reactome)
+plotdat <- bind_rows(plotdat, .id = "cluster")
+
+plotdat <- split(plotdat, f = plotdat$cluster)
+write_xlsx(plotdat, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/pathway enrichment/pathway_enrichment_within_subset_comparison.xlsx")
+
+plotdat <- bind_rows(plotdat)
+#plotdat <- plotdat[grep("mitochond|ATP|oxidative|NADH|TCA|electron|cytokine|interleukin|TNF|IL2|IL6|interferon|tgf|prolif|chemokine|complement", plotdat$Description, ignore.case = T),]
+plotdat <- plotdat[plotdat$Description %in% c("nuclear division", 
+                                              "positive regulation of cell cycle", 
+                                              "regulation of metaphase/anaphase transition of cell cycle",
+                                              "cell cycle G2/M phase transition",
+                                              "tissue remodeling",
+                                              "wound healing",
+                                              "fatty acid metabolic process",
+                                              "lipid oxidation",
+                                              "fatty acid oxidation",
+                                              "leukotriene metabolic process",
+                                              "regulation of macrophage derived foam cell differentiation",
+                                              "regulation of release of sequestered calcium ion into cytosol",
+                                              "reactive oxygen species biosynthetic process",
+                                              
+                                              "positive regulation of oxidoreductase activity",
+                                              
+                                              
+                                              
+                                              
+                                              "positive regulation of cytokine production involved in immune response",
+                                              "regulation of CD8-positive,
+                                              alpha-beta T cell proliferation", 
+                                              "regulation of natural killer cell mediated immunity",
+                                              
+                                              "antigen processing and presentation of endogenous peptide antigen",
+                                              
+                                              "regulation of interleukin-12 production",
+                                              "T cell costimulation", 
+                                              
+                                              "positive regulation of interleukin-12 production",
+                                              
+                                              "Antigen processing-Cross presentation",
+                                              "Toll Like Receptor 2 (TLR2) Cascade",
+                                              "mitochondrial respiratory chain complex IV",
+                                              "H4/H2A histone acetyltransferase complex",
+                                              "cytochrome complex",
+                                              "humoral immune response",
+                                              
+                                              "antigen processing and presentation of peptide or polysaccharide antigen via MHC class II",
+                                              
+                                              "response to tumor necrosis factor",
+                                              
+                                              "complement activation",
+                                              "T cell cytokine production",
+                        
+                                              
+                                              "cellular response to interleukin-17",
+                                              
+                                              
+                                              "CD40 signaling pathway",
+                                              "CXCR chemokine receptor binding"),]
+
+plotdat$pathway <- str_wrap(plotdat$Description, 60)
+plotdat$neglogpval <- -log10(plotdat$pvalue)
+plotdat$pathway <- factor(plotdat$pathway, levels = unique(plotdat$pathway))
+
+ggplot(plotdat, aes(x = cluster, y = pathway, color = neglogpval)) +
+    geom_point(aes(size = Count)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient(low = '#e7b9bf', high = '#b2182b') +
+    scale_size(range = c(3, 7)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/pathway enrichment/pathway_enrichment_within_subset_comparison_allpathways.pdf", width = 9, height = 900, limitsize = F, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/pathway enrichment/pathway_enrichment_within_subset_comparison_allpathways_filtered.png", width = 7, height = 8, units = "in")
+```
+
+# macro violin genes per cluster
+```{r}
+list_of_goi_plots <- function(seuratdata, goi, celllabel, toptable){
+  library(ggbeeswarm)
+  toptable <- bind_rows(toptable, .id = "label.subset")
+  countdata <- FetchData(object = seuratdata, layer = "data", vars = goi) %>% rownames_to_column("Cell")
+  metadata <- seuratdata@meta.data
+  colnames(metadata)[colnames(metadata) == celllabel] <- "celllabel"
+  
+  metadata <- metadata %>% dplyr::select(Group, celllabel) %>% rownames_to_column("Cell")
+  
+  metadata <- merge(metadata, countdata, by = "Cell")
+  metadata <- metadata[metadata$Group != "Uninfected",]
+  
+  plotdat <- reshape2::melt(metadata, id.vars = c("Cell", "Group", "celllabel"))
+  plotdat$variable <- factor(plotdat$variable, levels = goi)
+  #remove zeroes
+  plotdat <- plotdat[plotdat$value != 0,]
+  plotdat$split <- paste(plotdat$celllabel, plotdat$variable, sep = " ")
+  plotlist <- split(plotdat, f = plotdat$split)
+  plotlist <- lapply(seq_along(plotlist), function(i){
+    x <- plotlist[[i]]
+    print(i)
+    #get p-value for the comparison
+    if(table(x$Group)[2] < 3|table(x$Group)[3] < 3){
+      return(NULL)
+    }else{pval <- toptable[toptable$GeneID == unique(x$variable) & toptable$label.subset == unique(x$celllabel),]
+    pval <- ifelse(nrow(pval) == 0, "NA", paste(round(pval$p_val,4), round(pval$p_val_adj,3), sep = ","))
+    pval <- data.frame(group1 = unique(x$Group)[1], group2 = unique(x$Group)[2], p = pval, y.position = max(x$value)+0.2)
+    ggplot(x, aes(x = Group, y = value)) + geom_violin(aes(fill = Group, color = Group), linewidth = 1, scale = "width", position = "dodge", draw_quantiles = c(0.25, 0.75), linetype = "dashed") + geom_violin(aes(fill = Group, color = Group),linewidth = 1, scale = "width", position = "dodge", draw_quantiles = 0.5, fill = "transparent") + scale_color_manual(values = c("#004c00","#980000")) + scale_fill_manual(values = c("#caffc9","#fddfdf")) + labs(title = names(plotlist)[i]) + scale_y_continuous(limits = c(0, max(x$value)+0.35)) + stat_pvalue_manual(data = pval, label = "p") + theme_Publication() + theme(legend.position = "none", axis.title.x = element_blank(), axis.title.y = element_blank(), plot.title = element_text(hjust = 0.5))}
+  })
+}
+
+#this code is to identify the current name for the genes of interest
+rownames(lung9s3)[grep("mfn", rownames(lung9s3), ignore.case = T)]
+
+plotlist <- list_of_goi_plots(seuratdata = lung9s3, goi = c("Mfn1", "Mfn2"), celllabel = "label.main_new", toptable = toptable)
+plotlist <- list_of_goi_plots(seuratdata = macro, goi = c("Mfn1", "Mfn2"), celllabel = "label.subset", toptable = toptable_macro)
+plotlist <- plotlist[sapply(plotlist, function(x)!is.null(x))]
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/14. Feb2025-PB/mitofusiongenes_allsubsets.pdf", width = 12, height = 16) #replace this with the file name of your interest
+ggpubr::ggarrange(plotlist = plotlist[1:22], nrow = 4, ncol = 4, byrow = TRUE) #the number 1:20 should be changed to number of plots you have. Check the number of objects in plotlist
+dev.off()
+```
+
+```{r}
+
+goi <- c("Mrc1","Stat1", "Il1b", "Tlr2", "Stx11", "Ccl2", "Sdc4", "Hif1a", "Hat1", "Pecam1", "Ddit4", "Srgn", "Tnf", "Myd88", "Ccr2", "Irf5",  "Icam2",  "Stat3", "Tlr4", "Cd86", "Adar", "Tlr7", "Cd80")
+goi <- c("Mrc1","Marco", "Pparg", "Tgfb1", "Cav1", "Klf4", "Vegfb", "Emp3", "Pdgfc", "Il16", "Mapk1", "Il18", "Cx3cr1", "Trf", "Fn1", "Cd81", "Prdx2", "Notch1", "Nfkb1", "Stat6", "Ikbkb")
+
+countdata <- FetchData(object = macro, layer = "data", vars = goi) %>% rownames_to_column("Cell")
+
+metadata <- macro@meta.data %>% 
+  dplyr::select(Group, label.subset) %>% rownames_to_column("Cell")
+
+metadata <- merge(metadata, countdata, by = "Cell")
+metadata <- metadata[metadata$Group != "Uninfected",]
+
+plotdat <- reshape2::melt(metadata, id.vars = c("Cell", "Group", "label.subset"))
+plotdat$variable <- factor(plotdat$variable, levels = goi)
+plotlist <- split(plotdat, f = plotdat$variable)
+
+plotlist <- lapply(plotlist, function(x){
+  ggplot(x, aes(x = label.subset, y = value, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width", position = "dodge") + scale_fill_manual(values = cols) + stat_compare_means(label = "p.signif") + theme_void() + labs(title = unique(x$variable)) + theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,0,0,0, "cm")), plot.title = element_text(hjust = 0.5), axis.text.x = element_text())
+})
+
+plotlist[[1]] + plotlist[[2]]+plotlist[[3]]+plotlist[[4]]+plotlist[[5]]+plotlist[[6]]+plotlist[[7]]+plotlist[[8]]+plotlist[[9]]+plotlist[[10]]+plotlist[[11]]+plotlist[[12]]+plotlist[[13]]+plotlist[[14]]+plotlist[[15]]+plotlist[[16]]+plotlist[[17]]+plotlist[[18]]+plotlist[[19]]+plotlist[[20]]+plotlist[[21]] + plot_layout(guides = "collect", ncol = 4) & theme(legend.position = "bottom")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/macrophage cluster/subset_markergenes_cd206posgenes.pdf", width = 11, height = 14, units = "in")
+```
+
+#identify any T1-T17 cells
+```{r}
+DotPlot(tcell, features = c("Tnf","Ifng","Rora", "Rorc", "Rbpj", "Bhlhe40", "Ccr6", "Cxcr3", "Il23r"), group.by = "seurat_clusters") + DimPlot(tcell, group.by = "seurat_clusters", cols = cols)
+
+DotPlot(tcell, features = c("Ifng","Rora", "Bhlhe40", "Cxcr3"))
+
+t1t17 <- subset(tcell, subset = label.subset %in% c("CD4+ T Act", "CD8+ T Act"))
+
+test <- cbind(table(t1t17$SampleID), table(tcell$SampleID))
+test <- as.data.frame(test)
+test$perc <- (test$V1/test$V2)*100
+test <- test %>% rownames_to_column("SampleID")
+```
+
+#calculate module score for t1-t17 cells and correlate thier frequencies with mito module score :(
+```{r}
+t1t17 <- AddModuleScore(t1t17, features = list(goi_mito), assay = "RNA", name = "mito_module_score")
+
+plotdat <- t1t17@meta.data %>% dplyr::select(SampleID, mito_module_score1)
+plotdat <- plotdat %>% dplyr::group_by(SampleID) %>% dplyr::summarise(mean_mito_score = mean(mito_module_score1))
+plotdat <- merge(test, plotdat, by = "SampleID")
+
+ggplot(plotdat, aes(x = mean_mito_score, y = perc)) + geom_point() +  geom_smooth(method = "lm", formula = y ~ x) + stat_cor(label.y = 8, size = 6, label.x = 1.3) + theme_Publication() + xlab("Mitochondrial signature score") + ylab("Frequency of T1-T17 cells (%)") + scale_x_continuous(expand = c(0,0.005)) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.title = element_text(size = 13))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/16.Apr2025-PB/correlation_t1t17_mitoscore.png", width = 6, height = 6, units = "in")
+```
+
+```{r}
+macro <- AddModuleScore(macro, features = list(goi_lasso_ver2), assay = "RNA", name = "lasso_module_score")
+plotdat <- macro@meta.data %>% dplyr::select(SampleID, lasso_module_score1)
+plotdat <- plotdat %>% dplyr::group_by(SampleID) %>% dplyr::summarise(lasso_lasso_score = mean(lasso_module_score1))
+#plotdat$il17elispot <- c(0,50,0,140, 523, 1350, 2720, 3438, 4658)
+plotdat$il17elispot <- c(0,116,0,648, 576, 16576, 10432, 19468, 17424)
+plotdat$Group <- c("UN","UN","UN","WT Mtb", "WT Mtb", "WT Mtb", "hip1 Mut", "hip1 Mut", "hip1 Mut")
+plotdat$Group <- factor(plotdat$Group, levels = c("UN", "WT Mtb", "hip1 Mut"))
+
+ggplot(plotdat[4:9,], aes(x = lasso_lasso_score, y = il17elispot)) + geom_point(aes(color = Group), size = 4) +  geom_smooth(method = "lm", formula = y ~ x) + stat_cor(label.y = 20000, size = 6, label.x = 0.32) + theme_Publication() + xlab("LASSO signature score") + ylab("IL17+ cells per lung (8 weeks)") + scale_color_manual(values = c("#999999","#298c8c", "#f1a226")) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), axis.title = element_text(size = 13))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/16.Apr2025-PB/correlation_il17_lasso_macs_8w.pdf", width = 6, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/16.Apr2025-PB/correlation_il17_lasso_macs_8w.png", width = 6, height = 6, units = "in")
+```
+
+#plot module score for Glycolysis and Oxidative phosphorylation
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+macro_adata <- readRDS("velocyto_files/macro_adata_aug262024.rds")
+DimPlot(macro_adata)
+umap_embeddings <- macro_adata[["umap"]]@cell.embeddings
+umap_embeddings <- as.data.frame(umap_embeddings) %>% rownames_to_column("barcode_new")
+meta_adata <- macro_adata@meta.data %>% dplyr::select(barcode_orig) %>% rownames_to_column("barcode_new")
+umap_embeddings <- merge(umap_embeddings, meta_adata, by = "barcode_new")
+umap_embeddings$barcode_new <- NULL
+macro <- readRDS("rds_obs/macro_seuratobject_Jan172025.rds")
+
+macro <- AddModuleScore(macro, features = list(unique(all_gene_sets[all_gene_sets$gs_name == "HALLMARK_GLYCOLYSIS",]$gene_symbol)), assay = "RNA", name = "Glycolysis")
+macro <- AddModuleScore(macro, features = list(unique(all_gene_sets[all_gene_sets$gs_name == "GOBP_OXIDATIVE_PHOSPHORYLATION",]$gene_symbol)), assay = "RNA", name = "Oxidative_Phosphorylation")
+macro <- AddModuleScore(macro, features = list(unique(all_gene_sets[all_gene_sets$gs_name == "HALLMARK_OXIDATIVE_PHOSPHORYLATION",]$gene_symbol)), assay = "RNA", name = "H_Oxidative_Phosphorylation")
+
+meta <- macro@meta.data %>% dplyr::select(Glycolysis1, Oxidative_Phosphorylation1, H_Oxidative_Phosphorylation1, Group) %>% rownames_to_column("barcode_orig")
+umap_embeddings <- merge(umap_embeddings, meta, by = "barcode_orig")
+plotdat <- umap_embeddings[umap_embeddings$Group != "Uninfected",]
+
+ggplot(plotdat, aes(x = UMAP_1, y = UMAP_2)) + geom_point(aes(color = Oxidative_Phosphorylation1)) + facet_wrap(.~Group) + scale_colour_gradient2(low = "blue", mid = "yellow", high = "red", na.value = NA, midpoint = 0.3) + theme_void()
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/20.August2025-PB/gopb_oxphos_UMAP_AMsubset.pdf", width = 8, height = 4.5, units = "in")
+
+ggplot(plotdat, aes(x = UMAP_1, y = UMAP_2)) + geom_point(aes(color = Glycolysis1)) + facet_wrap(.~Group) + scale_colour_gradient2(low = "yellow", mid = "yellow", high = "red", na.value = NA) + theme_void()
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/20.August2025-PB/hallmark_glycolysis_UMAP_AMsubset.pdf", width = 8, height = 4.5, units = "in")
+
+ggplot(plotdat, aes(x = UMAP_1, y = UMAP_2)) + geom_point(aes(color = H_Oxidative_Phosphorylation1)) + facet_wrap(.~Group) + scale_colour_gradient2(low = "yellow", mid = "yellow", high = "red", na.value = NA) + theme_void()
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/20.August2025-PB/hallmark_oxphos_UMAP_AMsubset.pdf", width = 8, height = 4.5, units = "in")
+
+ggplot(plotdat, aes(x = UMAP_1, y = )) + geom_density() + facet_wrap(.~Group)
+```
+
+# Mono and macs
+```{r}
+monomac <- subset(lung9s3, subset = label.main %in% c("Macrophages", "Monocytes"))
+monomac <- FindVariableFeatures(monomac, verbose = F)
+monomac <- ScaleData(monomac, verbose = F)
+monomac <- NormalizeData(monomac,  verbose = F)
+monomac <- RunPCA(monomac, verbose = F, npcs = 20)
+monomac <- RunUMAP(monomac, dims = 1:15, verbose = F)
+monomac <- FindNeighbors(monomac, dims = 1:15)
+monomac <- FindClusters(monomac, resolution = 0.7)
+
+DimPlot(monomac, group.by = "seurat_clusters", cols = cols)
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/23.Nov2025-PB/seurat_clusters_monomac_res0.7.pdf", width = 10, height = 7, units = "in")
+
+DotPlot(monomac, group.by = "seurat_clusters", features = c("Cd74", "Cd53", "Itgam", "Itgax", "Cd68", "Cx3cr1", "Ly6a", "Ly6c2", "H2-DMa", "H2-DMb1", "H2-Aa", "H2-Ab1", "H2-Eb1", "Slc39a1", "Pim1", "Csf1r", "Lyz2", "C1qa", "C1qb", "Plaur", "Apoe", "Mafb", "Fcgr4", "Fcgr1", "Mrc1", "Chil3", "Ear1", "Ear2", "Krt79", "Cd83", "Cd86", "Ccr7", "Ccl22", "Dpp4"))
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/23.Nov2025-PB/dotplot_seurat_clusters_monomac_markers.pdf", width = 27, height = 7, units = "in")
+```
+
+# Neutrophil analysis
+```{r}
+library(UCell)
+library(SingleR)
+library(ggcorrplot)
+neutro <- subset(lung9s3, subset = label.main_new == "Neutrophils")
+neutro <- subset(neutro, subset = Group != "hip1 Mut")
+
+#redo normalizations and clustering 
+neutro <- FindVariableFeatures(neutro, verbose = F)
+neutro <- ScaleData(neutro, verbose = F)
+neutro <- NormalizeData(neutro,  verbose = F)
+neutro <- RunPCA(neutro, verbose = F, npcs = 20)
+neutro <- RunUMAP(neutro, dims = 1:15, verbose = F)
+neutro <- FindNeighbors(neutro, dims = 1:15)
+neutro <- FindClusters(neutro, resolution = 1)
+
+DimPlot(neutro, cols = cols)
+
+#do correlation between clusters
+avg_exp <- AggregateExpression(neutro)
+avg_exp <- avg_exp$RNA
+avg_exp <- as.matrix(avg_exp)
+cor.exp <- cor(avg_exp, method = "pearson")
+ggcorrplot(cor.exp)
+
+#combine clusters 0,1,3,4,5 together
+neutro$label.fine <- ifelse(neutro$seurat_clusters == 6, "N3", ifelse(neutro$seurat_clusters == 2, "N2", "N1"))
+DimPlot(neutro, group.by = "label.fine", cols = cols)
+```
+
+```{r}
+#load MDSC signature from Alshetaiwi et.al 2020 paper
+mdsc_sigature_Alshetaiwi <- read_xlsx("~/Downloads/aay6017_table_s5.xlsx")
+mdsc_sigature_Alshetaiwi <- mdsc_sigature_Alshetaiwi$x
+
+signature <- list("mdsc_AlshetaiwiModule" = mdsc_sigature_Alshetaiwi)
+neutro <- AddModuleScore_UCell(neutro, features = signature, assay = "RNA", name = NULL)
+VlnPlot(neutro, features = "mdsc_AlshetaiwiModule", group.by = "label.fine")
+```
+
+#save seurat object
+```{r}
+saveRDS(neutro,"rds_obs/neutro_Dec2025.rds")
+```
+
+#Dotplot of marker genes
+```{r}
+plotdat <- DotPlot(neutro, features = c(mdsc_sigature_Alshetaiwi, "Fcgr1"), group.by = "label.fine")
+plotdat <- plotdat$data
+plotdat <- plotdat[!is.nan(plotdat$avg.exp.scaled),]
+ggplot(plotdat, aes(x = id, y = features.plot, color = avg.exp.scaled)) + geom_point(aes(size = pct.exp)) + scale_color_gradient2(high = "red", mid = "white", low = "blue") + theme_classic() + theme(axis.title.x = element_blank(), axis.title.y = element_blank())
+ggsave("~/OneDrive - Emory/pbajpai/bulk RNA seq datasets/MDSC_bulkrnaseq/Figures/2.Dec2025/mouse2weeks10x_mdscmarkers_neutrophilseuratclusters.pdf", width = 3.8, height = 18, units = "in")
+ggsave("~/OneDrive - Emory/pbajpai/bulk RNA seq datasets/MDSC_bulkrnaseq/Figures/2.Dec2025/mouse2weeks10x_mdscmarkers_neutrophilzilionis.pdf", width = 3.8, height = 18, units = "in")
+ggsave("~/OneDrive - Emory/pbajpai/bulk RNA seq datasets/MDSC_bulkrnaseq/Figures/2.Dec2025/mouse2weeks10x_mdscmarkers_neutrophillabelfine.pdf", width = 3.8, height = 19, units = "in")
+```
+
+```{r}
+Idents(neutro) <- "label.fine"
+topmarkersPercluster <- lapply(unique(neutro$label.fine), function(x){
+  message(paste("running cluster:", x, sep = ""))
+  cluster_marker <- FindMarkers(neutro, ident.1 = x, min.pct = 0.1, only.pos = F)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- unique(neutro$label.fine)
+```
+
+#enrichment plot
+```{r}
+msigdbr_list <- list("signature_Alshetaiwi" = mdsc_sigature_Alshetaiwi)
+
+x = topmarkersPercluster$N3
+minx <- x[x$p_val != 0,]
+x$p_val[x$p_val == 0] <- min(minx$p_val)
+preranked = x %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    arrange(logp)
+rankset = setNames(preranked$logp, preranked$GeneID)
+  
+plotEnrichment(msigdbr_list[[1]], rankset) + labs(title = "MDSC signature Alshetaiwi") + theme(plot.title = element_text(hjust = 0.5))
+
+ggsave("~/OneDrive - Emory/pbajpai/bulk RNA seq datasets/MDSC_bulkrnaseq/Figures/2.Dec2025/enrichmentplot_N3_MDSCAlshetaiwi.pdf", width = 5, height = 4, units = "in")
+```
+
+#freq
+```{r}
+NewFreqTable <- data.frame("SampleID" = neutro$SampleID, "label.fine" = neutro$label.fine, "Group" = neutro$Group) %>% 
+  group_by(SampleID, label.fine, Group) %>% 
+  summarise(n_cells = n()) %>% 
+  ungroup() %>% 
+  spread(label.fine, n_cells, fill = 0)
+
+PercTable <- NewFreqTable %>%
+  select(-(Group)) %>%
+  column_to_rownames("SampleID")
+
+PercTable <- apply(PercTable, 1, function(mycols){
+  mysum <- sum(mycols)
+  mycols <- (mycols/mysum)*100
+})
+PercTable <- as.data.frame(t(PercTable)) %>%
+  rownames_to_column("SampleID")
+PercTable <- merge(PercTable, NewFreqTable[,1:2], by = "SampleID")
+
+plotdat <- melt(PercTable, id.vars = c("SampleID", "Group")) %>%
+  group_by(Group, variable) %>%
+  mutate(mean_len = mean(value)) %>%
+  mutate(upper_ci = mean_len + sd(value)/sqrt(length(value)),
+         lower_ci = mean_len - sd(value)/sqrt(length(value)))
+
+plotdat$Group <- factor(plotdat$Group, levels = c("Uninfected", "WT Mtb"))
+ggplot(plotdat, aes(x = Group, y = value)) +
+  geom_bar(stat = 'summary', fun= 'mean', position = 'dodge',alpha = 0.7, fill = "#1f78b4", color = "black", width = 0.8) + ggforce::geom_sina(maxwidth = 0.3) +
+  facet_wrap(.~variable, scales = "free") +
+  geom_errorbar(aes(ymin=lower_ci, ymax=upper_ci), width=.2,
+                 position=position_dodge(.9)) +
+  #stat_compare_means(comparisons = list(c("Uninfected", "WT Mtb"))) +
+  ylab("Percent of total cells") + xlab("") +
+  theme_Publication() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+ggsave("~/OneDrive - Emory/pbajpai/bulk RNA seq datasets/MDSC_bulkrnaseq/Figures/2.Dec2025/Freq_neutrophil_subsets10x.pdf", width = 6, height = 5, units = "in")
+```
+

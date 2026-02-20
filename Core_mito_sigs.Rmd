@@ -1,0 +1,1015 @@
+---
+title: "Core mito signatures"
+author: "Prashant"
+date: "2024-05-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+library(readxl)
+library(writexl)
+library(Seurat)
+library(patchwork)
+library(gridExtra)
+library(msigdbr)
+library(fgsea)
+library(MAST)
+library(enrichplot)
+library(reshape2)
+library(RColorBrewer)
+
+#setwd("/Users/pbajpai/Documents/KIT/Kit_10x/")
+source('helper_functions.R')
+source('/Users/pbajpai/Documents/Rthemes/theme_publication.R')
+```
+
+```{r loadRdata}
+#lung9s2 <- readRDS("rds_obs/lung9s2_newannotation.rds")
+#Idents(lung9s2) <- "Group"
+
+lung9s3 <- readRDS("rds_obs/lung9s3_newannotation.rds")
+Idents(lung9s3) <- "Group"
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "Rv", "Hip1"))
+lung9s3$label.main_new <- factor(lung9s3$label.main_new, levels = c("AM", "IM", "Neutrophils", "DC", "Monocytes", "CD4 T Cells", "CD8 T Cells", "Tgd", "B cells", "NK cells", "NKT","ILC", "Endothelial cells", "Fibroblasts", "Epithelial cells"))
+
+lung9s3$Group <- gsub("Rv", "WT Mtb", lung9s3$Group)
+lung9s3$Group <- gsub("Hip1", "hip1 Mut", lung9s3$Group)
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "WT Mtb", "hip1 Mut"))
+
+lung9s3$label.main_new2 <- lung9s3$label.main_new
+lung9s3$label.main_new2 <- gsub("AM", "1-AM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("IM", "2-IM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Neutrophils", "3-Neutrophils", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("DC", "4-DC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Monocytes", "5-Monocytes", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD4 T Cells", "6-CD4 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD8 T Cells", "7-CD8 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Tgd", "8-Tgd", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("B cells", "9-B cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NK cells", "10-NK cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NKT", "11-NKT", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("ILC", "12-ILC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Endothelial cells", "13-Endothelial cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Fibroblasts", "14-Fibroblasts", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Epithelial cells", "15-Epithelial cells", lung9s3$label.main_new2)
+
+lung9s3$label.main_new2 <- factor(lung9s3$label.main_new2, levels = c("1-AM", "2-IM", "3-Neutrophils", "4-DC", "5-Monocytes", "6-CD4 T Cells", "7-CD8 T Cells", "8-Tgd", "9-B cells", "10-NK cells", "11-NKT","12-ILC", "13-Endothelial cells", "14-Fibroblasts", "15-Epithelial cells"))
+```
+
+# Remove uninfected from further analysis
+```{r}
+lung9s3 <- subset(lung9s3, Group != "Uninfected")
+lung9s3$Group <- factor(lung9s3$Group, levels = c("WT Mtb", "hip1 Mut"))
+```
+
+```{r loadRdata}
+#Lung9s_10212022 <- readRDS("Lung9s_10212022.rds")
+topTables_DE_globalR43 <- readRDS("rds_obs/topTables_DE_globalR43.rds")
+topTables_DE_globalR43 <- topTables_DE_globalR43 %>% rownames_to_column("GeneID")
+topTables_DE <- readRDS("rds_obs/topTables_newannotR43.rds")
+topTables_DE_globalR43_noendo <- readRDS("rds_obs/topTables_DE_globalR43_noendo.rds") %>% rownames_to_column("GeneID")
+```
+
+# colors
+```{r}
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+```
+
+
+```{r}
+DimPlot(lung9s3, group.by = "label.main_new2", cols = cols, split.by = "Group")
+```
+```{r}
+goi <- c("Acsl4","Uqcrh","Dld","Hcls1","Acat1","Acsl1","Vdac2","Atp5o","Prdx1","Atad3a","Atp5b","Atp5a1","Oas2","Prdx3","Hadha","Sqor")
+goi <- c("Hspa1a")
+goi <- c("Il17ra", "Il17rb", "Il17rc", "Il17rd")
+
+countdata <- FetchData(object = lung9s3, layer = "data", vars = goi) %>% rownames_to_column("Cell")
+
+metadata <- lung9s3@meta.data %>% 
+  select(Group, label.main_new) %>% rownames_to_column("Cell")
+
+metadata <- merge(metadata, countdata, by = "Cell")
+
+plotdat <- melt(metadata, id.vars = c("Cell", "Group", "label.main_new"))
+plotdat$variable <- factor(plotdat$variable, levels = goi)
+
+test <- plotdat[plotdat$label.main_new %in% c("AM", "IM", "Neutrophils", "DC", "Monocytes"),]
+ggplot(test, aes(x = variable, y = value, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width", position = "dodge") + ggpubr::stat_compare_means(label = "p.signif") + scale_fill_manual(values = cols) + theme_Publication() +  theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,0,0,0, "cm")), plot.title = element_text(hjust = 0.5))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/THP-1 signature/thp1_goi_am_im_neut_dc_mono.pdf", width = 10, height = 5, units = "in")
+
+test <- split(plotdat, f = plotdat$label.main_new)
+plotlist <- lapply(test, function(x){
+  out <- ggplot(x, aes(x = variable, y = value, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width", position = "dodge") + ggpubr::stat_compare_means(label = "p.signif") + scale_fill_manual(values = cols) + labs(title = unique(x$label.main_new)) + theme_Publication() +  theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,0,0,0, "cm")), plot.title = element_text(hjust = 0.5))
+})
+ggsave(filename = "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/THP-1 signature/thp1_goi_allsubsets.pdf", plot = gridExtra::marrangeGrob(plotlist, nrow=1, ncol=1), width = 15, height = 9)
+```
+
+```{r}
+library(msigdbr)
+all_gene_sets = msigdbr(species = "Mus musculus")
+```
+
+# Oxphos gene signature
+```{r}
+goi <- all_gene_sets[all_gene_sets$gs_name == "HALLMARK_OXIDATIVE_PHOSPHORYLATION",]
+goi <- goi$gene_symbol
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "OXPHOS", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_oxphos_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_oxphos_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_oxphos_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "OXPHOS", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_oxphos_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_oxphos_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_oxphos_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+
+# mitochondrial genes
+```{r}
+goi <- rownames(lung9s3)[grep("mt-", rownames(lung9s3), ignore.case = T)]
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "Mt Genes", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mtgenes_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mtgenes_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mtgenes_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "Mt Genes", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mtgenes_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mtgenes_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mtgenes_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+# Mitocarta: Identify genes of interest using GSEA
+```{r}
+mitocarta <- read_xls("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Mitocarta leading edge genes/Mouse.MitoCarta3.0.xls", sheet = 2)
+msigdbr_list <- list("Mitocarta Genes" = mitocarta$Symbol)
+
+fgsea_genelist = lapply(seq_along(topTables_DE), function(i){
+  x = topTables_DE[[i]]
+  print(names(topTables_DE)[i])
+  preranked = x %>%
+    mutate_at(2,~replace(., . == 0, min(.[.>0], na.rm = TRUE)*0.1)) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) = names(topTables_DE)
+
+leading_genes <- bind_rows(fgsea_genelist, .id = "celltypes")
+leading_genes <- leading_genes[leading_genes$pval <= 0.05,]
+
+goi <- leading_genes$leadingEdge
+goi <- paste(goi, collapse = ",")
+goi <- unlist(strsplit(goi, split = ","))
+goi <- unique(goi)
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "Mitocarta Genes", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mitocartaleadingedge_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mitocartaleadingedge_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mitocartaleadingedge_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "Mitocarta Genes", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mitocartaleadingedge_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mitocartaleadingedge_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mitocartaleadingedge_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+
+# TCA gene signature
+```{r}
+goi <- all_gene_sets[all_gene_sets$gs_name == "REACTOME_CITRIC_ACID_CYCLE_TCA_CYCLE",]
+goi <- goi$gene_symbol
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "TCA", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_TCA_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_TCA_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_TCA_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "TCA", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_TCA_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_TCA_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_TCA_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+
+# Fatty acid oxidation
+```{r}
+goi <- all_gene_sets[all_gene_sets$gs_name == "REACTOME_MITOCHONDRIAL_FATTY_ACID_BETA_OXIDATION",]
+goi <- goi$gene_symbol
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "FAO", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_FAO_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_FAO_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_FAO_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "FAO", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_FAO_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_FAO_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_FAO_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+# Glutamate
+```{r}
+goi <- all_gene_sets[all_gene_sets$gs_name == "GOBP_GLUTAMATE_BIOSYNTHETIC_PROCESS",]
+goi <- goi$gene_symbol
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "glutamate", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_glutamate_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_glutamate_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_glutamate_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "glutamate", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_glutamate_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_glutamate_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_glutamate_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+
+# Glutamine Metabolism
+```{r}
+goi <- all_gene_sets[all_gene_sets$gs_name == "REACTOME_GLUTAMATE_AND_GLUTAMINE_METABOLISM",]
+goi <- goi$gene_symbol
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "glutamine", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_glutamine_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_glutamine_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_glutamine_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "glutamine", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_glutamine_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_glutamine_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_glutamine_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+
+# Mitochondrial coexpressing genes
+```{r}
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Mito coexpression signature/mitogene_coexpr_cluster.txt")
+goi <- goi$V1
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "Co-expressing Genes Mito", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mitocoexprs_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mitocoexprs_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mitocoexprs_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "Co-expressing Genes Mito", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mitocoexprs_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mitocoexprs_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mitocoexprs_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+```
+# Violin plots for core mitochondrial genes
+```{r}
+# list of your genes you want to plot
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Mito coexpression signature/mitogene_coexpr_cluster.txt")
+goi <- goi$V1
+#am is the Seurat object
+countdata <- FetchData(object = lung9s3, layer = "data", vars = goi) %>% rownames_to_column("Cell")
+
+#hiv_timepoint is the group column and label.subset is the cell annatation. Replace with your column names.
+metadata <- lung9s3@meta.data %>% 
+  dplyr::select(Group, label.main_new) %>% rownames_to_column("Cell")
+
+metadata <- merge(metadata, countdata, by = "Cell")
+
+#Code to change into long format for ggplot
+plotdat <- melt(metadata, id.vars = c("Cell", "Group", "label.main_new"))
+plotdat <- plotdat[plotdat$Group != "Uninfected",]
+plotdat <- plotdat[plotdat$label.main_new %in% c("AM", "IM", "Neutrophils", "Monocytes", "CD4 T Cells", "CD8 T Cells", "B cells", "NK cells", "Endothelial cells"),]
+plotdat$variable <- factor(plotdat$variable, levels = rev(goi))
+plotdat$Group <- factor(plotdat$Group, levels = c("hip1 Mut", "WT Mtb"))
+ggplot(plotdat, aes(x = value, y = variable, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width") + facet_wrap(.~label.main_new, ncol = 9) + scale_x_continuous(labels = seq(0, 6, 2), breaks = seq(0, 6, 2), limits = c(0, 7)) + scale_fill_manual(values = cols) + theme_Publication() +  theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,-10,0,-10, "cm")))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Mito coexpression signature/violin_genes.pdf", width = 10, height = 12, units = "in")
+
+```
+
+# Mitochondrial core: filtered coexpression/TCA/OXPHOS
+```{r}
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi <- unique(as.character(goi))
+
+DoHeatmap(lung9s3, features = goi, group.by = "Group", slot = "data")
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "Co-expressing Genes Mito", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mitocoexprs_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mitocoexprs_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mitocoexprs_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "Co-expressing Genes Mito", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_mitocoexprs_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_mitocoexprs_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_mitocoexprs_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+
+countdata <- FetchData(object = lung9s3, vars = goi, layer = "data") %>% rownames_to_column("Cell")
+
+metadata <- lung9s3@meta.data %>% 
+  dplyr::select(Group, label.main_new) %>% rownames_to_column("Cell")
+metadata <- merge(metadata, countdata, by = "Cell")
+
+plotdat <- melt(metadata, id.vars = c("Cell", "Group", "label.main_new"))
+plotdat <- plotdat[plotdat$Group != "Uninfected",]
+plotdat <- plotdat[plotdat$label.main_new %in% c("AM", "IM", "Neutrophils", "Monocytes", "CD4 T Cells", "CD8 T Cells", "B cells", "NK cells", "Endothelial cells"),]
+plotdat$variable <- factor(plotdat$variable, levels = rev(goi))
+plotdat$Group <- factor(plotdat$Group, levels = c("hip1 Mut", "WT Mtb"))
+ggplot(plotdat, aes(x = value, y = variable, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width") + facet_wrap(.~label.main_new, ncol = 9) + scale_x_continuous(labels = seq(0, 6, 2), breaks = seq(0, 6, 2), limits = c(0, 7)) + scale_fill_manual(values = c("#fdb462","#386cb0")) + theme_Publication() +  theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,-10,0,-10, "cm")))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/violin_genes.pdf", width = 14, height = 12, units = "in")
+
+library(ComplexHeatmap)
+plotdat <- lung9s3
+plotdat$main_group <- paste(plotdat$label.main_new, plotdat$Group, sep = "_")
+Idents(plotdat) <- "main_group"
+
+mat <- AverageExpression(plotdat, group.by = "main_group", return.seurat = F, layer = "counts")[[1]] %>% as.matrix()
+mat <- mat[,grep("Fibroblasts|Epithelial|Endothelial|ILC|Tgd|NKT|Uninfected", colnames(mat), invert = T)]
+
+mat <- mat[, c(2,1,12,11,16,15,10,9,14,13,6,5,8,7,4,3,18,17)]
+#mat <- mat[, c(2,1,8,7, 10,9, 12,11, 14,13, 16,15, 4,3, 6,5)]
+mat <- mat[goi_mito,]
+#mat <- mat[,c("1-AM_hip1", "1-AM_Rv", "2-NK cells_hip1", "2-NK cells_Rv", "NKT-Rv")]
+#remove genes with zero expression
+mat <- t(scale(t(mat)))
+test <- t(apply(mat, 1, scales::rescale))
+#cluster_anno <- factor(colnames(mat), levels = colnames(mat))
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+col_fun = circlize::colorRamp2(c(0, 20), c("white", "red"))
+col_fun = circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
+
+colnames(mat) <- gsub("-.*", "", colnames(mat))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/heatmap_mitogenes_filtered.pdf", width = 10, height = 7)
+Heatmap(mat, name = "Expression",  
+        column_split = rep(1:9, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 16),
+        column_gap = unit(1, "mm"),
+        cluster_rows = T,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 16),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = T,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+# Lasso genes
+```{r}
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi <- goi$V1
+goi <- gsub("`", "", goi)
+
+#filtered_lasso_genes
+goi_lasso_fil <- read.csv("~/Downloads/string_interactions_short (1).tsv",sep = "\t")
+goi_lasso_fil <- unique(c(goi_lasso_fil$X.node1, goi_lasso_fil$node2))
+
+p_aucell <- genesigs.umap.dens.Aucell(mygenes = goi, pathwayname = "Lasso Genes", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_lasso_aucell.pdf", p_aucell[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_lasso_aucell.pdf", p_aucell[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_lasso_aucell.pdf", p_aucell[[3]], width = 10, height = 6, units = "in")
+
+p_sipsic <- genesigs.umap.dens.Sipsic(mygenes = goi, pathwayname = "Lasso Genes", seuratobj = lung9s3)
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/umap_lasso_sipsic.pdf", p_sipsic[[1]], width = 8, height = 5, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/density_lasso_sipsic.pdf", p_sipsic[[2]], width = 10, height = 7, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/violin_lasso_sipsic.pdf", p_sipsic[[3]], width = 10, height = 6, units = "in")
+
+countdata <- FetchData(object = lung9s3, vars = goi_lasso, layer = "data") %>% rownames_to_column("Cell")
+
+metadata <- lung9s3@meta.data %>% 
+  dplyr::select(Group, label.main_new) %>% rownames_to_column("Cell")
+metadata <- merge(metadata, countdata, by = "Cell")
+
+plotdat <- melt(metadata, id.vars = c("Cell", "Group", "label.main_new"))
+plotdat <- plotdat[plotdat$Group != "Uninfected",]
+plotdat <- plotdat[plotdat$label.main_new %in% c("AM", "IM", "Neutrophils", "DC", "Monocytes", "CD4 T Cells", "CD8 T Cells", "B cells", "NK cells"),]
+plotdat$variable <- factor(plotdat$variable, levels = rev(goi_lasso))
+plotdat$Group <- factor(plotdat$Group, levels = c("hip1 Mut", "WT Mtb"))
+ggplot(plotdat, aes(x = value, y = variable, fill = Group)) + geom_violin(linewidth = 0.1, scale = "width") + facet_wrap(.~label.main_new, ncol = 9) + scale_x_continuous(labels = seq(0, 8, 2), breaks = seq(0, 8, 2), limits = c(0, 9)) + scale_fill_manual(values = c("#fdb462","#386cb0")) + theme_Publication() +  theme(legend.position = "bottom", axis.title.x = element_blank(), axis.title.y = element_blank(), strip.text.x = element_text(margin = margin(0,-10,0,-10, "cm")))
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/Violin plots/violin_genes_lasso.pdf", width = 14, height = 10, units = "in")
+
+library(ComplexHeatmap)
+plotdat <- lung9s3
+plotdat$main_group <- paste(plotdat$label.main_new, plotdat$Group, sep = "_")
+Idents(plotdat) <- "main_group"
+
+mat <- AverageExpression(plotdat, group.by = "main_group", return.seurat = F, layer = "counts")[[1]] %>% as.matrix()
+mat <- mat[,grep("Fibroblasts|Epithelial|Endothelial|ILC|Tgd|NKT|Uninfected", colnames(mat), invert = T)]
+
+mat <- mat[, c(2,1,12,11,16,15,10,9,14,13,6,5,8,7,4,3,18,17)]
+#mat <- mat[, c(2,1,8,7, 10,9, 12,11, 14,13, 16,15, 4,3, 6,5)]
+mat <- mat[goi_lasso,]
+#mat <- mat[,c("1-AM_hip1", "1-AM_Rv", "2-NK cells_hip1", "2-NK cells_Rv", "NKT-Rv")]
+#remove genes with zero expression
+mat <- t(scale(t(mat)))
+test <- t(apply(mat, 1, scales::rescale))
+#cluster_anno <- factor(colnames(mat), levels = colnames(mat))
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+col_fun = circlize::colorRamp2(c(0, 20), c("white", "red"))
+col_fun = circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
+
+colnames(mat) <- gsub("-.*", "", colnames(mat))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/heatmap_lasso.pdf", width = 9, height = 8)
+Heatmap(mat, name = "Expression",  
+        column_split = rep(1:9, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 16),
+        column_gap = unit(1, "mm"),
+        cluster_rows = T,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 16),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = T,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+
+```{r}
+library(pathview)
+library(biomaRt)
+
+genelistglobal <- ref.genelist(topTables_DE_globalR43_noendo)
+
+pathview(gene.data  = genelistglobal, pathway.id = "mmu00190", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelistglobal, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelistglobal, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelistglobal, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelistglobal, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelistglobal, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelistglobal, pathway.id = "mmu00190", species = "mouse",limit = list(gene=1, cpd=1))
+
+
+genelist_hip_vs_rv <- lapply(topTables_DE, function(x){
+  out <- ref.genelist(x)
+})
+
+genelist_AM <- ref.genelist(topTables_DE$AM)
+pathview(gene.data  = genelist_AM, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_AM, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_AM, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_AM, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_AM, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_AM, pathway.id = "mmu04066", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_AM, pathway.id = "mmu00380", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_IM <- ref.genelist(topTables_DE$IM)
+pathview(gene.data  = genelist_IM, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_IM, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_IM, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_IM, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_IM, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_Neutro <- genelist_hip_vs_rv$Neutrophils
+pathview(gene.data  = genelist_Neutro, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Neutro, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Neutro, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Neutro, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Neutro, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_Monocytes <- genelist_hip_vs_rv$Monocytes
+pathview(gene.data  = genelist_Monocytes, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Monocytes, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Monocytes, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Monocytes, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_Monocytes, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_CD4TCells <- genelist_hip_vs_rv$`CD4 T Cells`
+pathview(gene.data  = genelist_CD4TCells, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD4TCells, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD4TCells, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD4TCells, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD4TCells, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_CD8TCells <- genelist_hip_vs_rv$`CD8 T Cells`
+pathview(gene.data  = genelist_CD8TCells, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD8TCells, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD8TCells, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD8TCells, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_CD8TCells, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_BCells <- genelist_hip_vs_rv$`B cells`
+pathview(gene.data  = genelist_BCells, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_BCells, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_BCells, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_BCells, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_BCells, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+genelist_NKCells <- genelist_hip_vs_rv$`NK cells`
+pathview(gene.data  = genelist_NKCells, pathway.id = "mmu00020", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_NKCells, pathway.id = "mmu00071", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_NKCells, pathway.id = "mmu04064", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_NKCells, pathway.id = "mmu04660", species = "mouse",limit = list(gene=1, cpd=1))
+pathview(gene.data  = genelist_NKCells, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+
+
+```
+# AM subset heatmap for core signature/ LASSO
+```{r}
+macro <- subset(lung9s3, subset = label.main == "Macrophages")
+
+#redo normalizations and clustering 
+macro <- FindVariableFeatures(macro, verbose = F)
+macro <- ScaleData(macro, verbose = F)
+macro <- NormalizeData(macro,  verbose = F)
+macro <- RunPCA(macro, verbose = F, npcs = 20)
+#ElbowPlot(macro)
+macro <- RunUMAP(macro, dims = 1:15, verbose = F)
+macro <- FindNeighbors(macro, dims = 1:15)
+macro <- FindClusters(macro, resolution = 0.1)
+
+label.subset <- macro@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "AM 1", ifelse(seurat_clusters == 1, "AM 2", ifelse(seurat_clusters == 3, "AM 3", "IM")))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("AM 1", "AM 2", "AM 3", "IM"))
+
+macro <- AddMetaData(macro, metadata = label.subset)
+
+Idents(macro) <- "label.subset"
+
+DimPlot(macro, group.by = "label.subset")
+
+```
+
+# LASSO and Core mito genes
+```{r}
+#Heatmap for subset
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi <- unique(as.character(goi))
+
+#LASSO
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi <- goi$V1
+goi <- gsub("`", "", goi)
+```
+
+# Heatmap of lasso and mito genes
+```{r}
+library(ComplexHeatmap)
+plotdat <- macro
+plotdat$main_group <- paste(plotdat$label.subset, plotdat$Group, sep = "_")
+Idents(plotdat) <- "main_group"
+
+mat <- AverageExpression(plotdat, group.by = "main_group", return.seurat = F, layer = "counts")[[1]] %>% as.matrix()
+mat <- mat[,grep("Uninfected", colnames(mat), invert = T)]
+mat <- mat[, c(2,1,4,3,6,5,8,7)]
+#mat <- mat[, c(2,1,8,7, 10,9, 12,11, 14,13, 16,15, 4,3, 6,5)]
+mat <- mat[goi_lasso_fil,]
+#mat <- mat[,c("1-AM_hip1", "1-AM_Rv", "2-NK cells_hip1", "2-NK cells_Rv", "NKT-Rv")]
+#remove genes with zero expression
+mat <- t(scale(t(mat)))
+#test <- t(apply(mat, 1, scales::rescale))
+#cluster_anno <- factor(colnames(mat), levels = colnames(mat))
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+col_fun = circlize::colorRamp2(c(0, 20), c("white", "red"))
+col_fun = circlize::colorRamp2(c(0, 0.5, 1), c("blue", "white", "red"))
+
+anno_df <- data.frame(label = colnames(mat), 
+                     Cells = gsub("-.*", "", colnames(mat)),
+                     Group = gsub(".*-", "", colnames(mat)))
+anno_df$Cells <- factor(anno_df$Cells, levels = unique(anno_df$Cells))
+anno_df$Group <- factor(anno_df$Group, levels = c("WT Mtb", "hip1 Mut"))
+colcells <- cols[c(1:4)]
+names(colcells) <- unique(anno_df$Cells)
+colcells <- factor(colcells, levels = cols)
+ha = HeatmapAnnotation(df = anno_df[,2:3], col = list(Cells = colcells, Group = c("WT Mtb" = "#808000", "hip1 Mut" = "#000075")), annotation_name_side = "left", annotation_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")))
+plot(ha)
+
+colnames(mat) <- gsub("-.*", "", colnames(mat))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/Heatmap/Macrophage subsets/lassogenes_fil.pdf", width = 7, height = 10)
+Heatmap(mat, name = "Expression",  
+        column_split = rep(1:4, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 16),
+        column_gap = unit(1, "mm"),
+        cluster_rows = T,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 16),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        top_annotation = ha,
+        show_column_names = T,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+# T cell subset heatmap for core signature/ LASSO
+```{r}
+tcell <- subset(lung9s3, subset = label.main == "T cells")
+
+#redo normalizations and clustering 
+tcell <- FindVariableFeatures(tcell, verbose = F)
+tcell <- ScaleData(tcell, verbose = F)
+tcell <- NormalizeData(tcell,  verbose = F)
+tcell <- RunPCA(tcell, verbose = F, npcs = 20)
+tcell <- RunUMAP(tcell, dims = 1:15, verbose = F)
+tcell <- FindNeighbors(tcell, dims = 1:15)
+tcell <- FindClusters(tcell, resolution = 1)
+
+#label tcell subsets
+label.subset <- tcell@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters %in% c(1, 2, 3, 5, 6, 12, 13), "CD4+ T Naive", ifelse(seurat_clusters == 8, "CD4+ T Act", ifelse(seurat_clusters == 9, "CD4+ T Memory", ifelse(seurat_clusters %in% c(0, 11, 4), "CD8+ T Naive", ifelse(seurat_clusters == 10, "CD8+ T Act", "CD8+ T Memory")))))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = unique(label.subset$label.subset)[c(1, 4, 3, 2, 5, 6)])
+
+tcell <- AddMetaData(tcell, metadata = label.subset)
+Idents(tcell) <- "label.subset"
+
+DimPlot(tcell, group.by = "label.subset", cols = cols)
+```
+
+# Heatmap of lasso and mito genes
+```{r}
+#Heatmap for subset
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi <- unique(as.character(goi))
+
+#LASSO
+goi <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi <- goi$V1
+goi <- gsub("`", "", goi)
+
+library(ComplexHeatmap)
+plotdat <- tcell
+plotdat$main_group <- paste(plotdat$label.subset, plotdat$Group, sep = "_")
+Idents(plotdat) <- "main_group"
+
+mat <- AverageExpression(plotdat, group.by = "main_group", return.seurat = F, layer = "counts")[[1]] %>% as.matrix()
+mat <- mat[,grep("Uninfected", colnames(mat), invert = T)]
+mat <- mat[, c(2,1,4,3,6,5,8,7,10,9,12,11)]
+mat <- mat[goi_lasso_fil,]
+mat <- t(scale(t(mat)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+anno_df <- data.frame(label = colnames(mat), 
+                     Cells = gsub("-.*", "", colnames(mat)),
+                     Group = gsub(".*-", "", colnames(mat)))
+anno_df$Cells <- factor(anno_df$Cells, levels = unique(anno_df$Cells))
+anno_df$Group <- factor(anno_df$Group, levels = c("WT Mtb", "hip1 Mut"))
+colcells <- cols[c(1:6)]
+names(colcells) <- unique(anno_df$Cells)
+colcells <- factor(colcells, levels = cols)
+ha = HeatmapAnnotation(df = anno_df[,2:3], col = list(Cells = colcells, Group = c("WT Mtb" = "#808000", "hip1 Mut" = "#000075")), annotation_name_side = "left", annotation_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")))
+plot(ha)
+
+colnames(mat) <- gsub("-.*", "", colnames(mat))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/Heatmap/T cell subsets/lassogenes_fil.pdf", width = 10, height = 10)
+Heatmap(mat, name = "Expression",  
+        column_split = rep(1:6, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 16),
+        column_gap = unit(1, "mm"),
+        cluster_rows = T,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 16),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        top_annotation = ha,
+        show_column_names = T,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+#topmarker AM and T cells
+```{r}
+topTables_macro <- sapply(as.character(unique(macro$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(macro,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+topTables_macro <- topTables_macro[c("AM 1", "AM 2", "AM 3", "IM")]
+
+topTables_tcell <- sapply(as.character(unique(tcell$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(tcell,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+topTables_tcell <- topTables_tcell[c(3,4,1,6,5,2)]
+
+
+topTables_mono <- sapply(c("Mono1", "Mono2", "Mono3"), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(mono,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+```
+
+# fgsea
+```{r}
+goi_mito <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi_mito <- unique(as.character(goi_mito))
+
+#LASSO
+goi_lasso <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi_lasso <- goi_lasso$V1
+goi_lasso <- gsub("`", "", goi_lasso)
+
+
+msigdbr_list <- list("Core_Mito_Genes" = goi_mito, "LASSO_Genes" = goi_lasso)
+
+fgsea_genelist = lapply(seq_along(topTables_tcell), function(i){
+  x = topTables_tcell[[i]]
+  print(names(topTables_tcell)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_tcell)
+
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  #x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 50)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+combined_fgsea = bind_rows(combined_fgsea, .id = "cluster")
+
+plotdat <- combined_fgsea
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+plotdat$neglog10pval <- -log10(plotdat$pval)
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b', limits = c(0, 2.46)) +
+    scale_size(range = c(3, 7)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/GSEA/T Cell subsets/gsea_lasso_core_mito.pdf", width = 6, height = 3, units = "in")
+```
+
+# fgsea monocytes
+```{r}
+goi_mito <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/filtered_coexpression_TCA_OXPHOS/filtered_coexpression_TCA_OXPHOS.txt", sep = " ")
+goi_mito <- unique(as.character(goi_mito))
+
+#LASSO
+goi_lasso <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/Core Mito signature/Lasso Positive Coeff all cells/Mito_signature_lasso_positive_allcells.txt")
+goi_lasso <- goi_lasso$V1
+goi_lasso <- gsub("`", "", goi_lasso)
+
+msigdbr_list <- list("Core_Mito_Genes" = goi_mito, "LASSO_Genes" = goi_lasso)
+
+#polyamine pathway :(
+filtered_gene_sets <- all_gene_sets[grep("polyamine", all_gene_sets$gs_name, ignore.case = T),]
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_mono), function(i){
+  x = topTables_mono[[i]]
+  #print(names(topTables_tcell)[i])
+  minx <- x[x$p_val != 0,]
+  x$p_val[x$p_val == 0] <- min(minx$p_val)
+  preranked = x %>%
+    #mutate_at(2:6,~replace(., . == 0, min(.[.>0], na.rm = TRUE))) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset, scoreType = "pos")
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  fgsea_out$cluster <- unique(x$cluster)
+  return(fgsea_out)
+})
+names(fgsea_genelist) <- names(topTables_mono)
+
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  #x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 50)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+combined_fgsea$C6 <- NULL
+combined_fgsea = bind_rows(combined_fgsea, .id = "cluster")
+
+plotdat <- combined_fgsea
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+plotdat$neglog10pval <- -log10(plotdat$pval)
+plotdat$group <- ifelse(plotdat$NES > 0, "Upreg", "Downreg")
+
+ggplot(plotdat, aes(x = cluster, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b', limits = c(0, 3.08)) +
+    scale_size(range = c(3, 7)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/GSEA/Monocyte subsets/gsea_lasso_core_mito.pdf", width = 6, height = 3, units = "in")
+```
+
+# overlay LASSO and core mito genes onto the MA plot
+```{r}
+library(tidyverse)
+
+plotdat <- topTables_DE_globalR43_noendo %>% rownames_to_column("GeneID")
+
+genes_up <- topTables_DE_globalR43_noendo[topTables_DE_globalR43_noendo$avg_log2FC >= 0.378 & topTables_DE_globalR43_noendo$p_val_adj <= 0.05,]
+genes_down <- topTables_DE_globalR43_noendo[topTables_DE_globalR43_noendo$avg_log2FC <= -0.378 & topTables_DE_globalR43_noendo$p_val_adj < 0.05,]
+
+test <- AverageExpression(lung9s3, group.by = "orig.ident")[[1]]
+test <- as.data.frame(test)
+test$log2exp <- log2(test$all + 1)
+test <- test %>% rownames_to_column("GeneID")
+
+plotdat <- merge(plotdat, test, by = "GeneID")
+plotdat <- plotdat[c("GeneID", "avg_log2FC", "p_val_adj", "log2exp")]
+#topTables_global <- topTables_global %>% column_to_rownames("GeneID")
+colnames(plotdat) <- c("GeneID","log2FoldChange", "padj", "baseMeanLog2")
+plotdat$sizef <- ifelse(abs(plotdat$log2FoldChange) >= 0.378 & plotdat$padj <= 0.05, "yes", "no")
+
+set.seed(101010)
+ggmaplot(plotdat, fdr = 0.05, fc = 1.3, size = 2.5, palette = c("red", "blue", "darkgray"), genenames = as.vector(plotdat$GeneID), label.select = goi_lasso, legend = "top", top = 0, font.label = c("bold", 12), label.rectangle = F, font.legend = "bold", font.main = "bold", ggtheme = ggplot2::theme_minimal()) + scale_y_continuous(limits = c(-1, 1)) + theme(axis.text.x = element_text(color = "black", size = 12), axis.text.y = element_text(color = "black", size = 12), axis.title.x = element_text(size = 18), axis.title.y = element_text(size = 18), legend.text = element_text(size = 16)) +  guides(colour = guide_legend(override.aes = list(size=10)))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/maplot_mitocore.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/maplot_lasso.pdf", width = 8, height = 6, units = "in")
+
+#Fold changes for cytoscape
+out <- plotdat[plotdat$GeneID %in% goi_lasso,]
+out <- out[c("GeneID", "log2FoldChange")]
+write.csv(out, "~/Downloads/lassogenes.csv")
+
+out <- plotdat[plotdat$GeneID %in% goi_mito,]
+out <- out[c("GeneID", "log2FoldChange")]
+write.csv(out, "~/Downloads/mitogenes.csv")
+```
+
+# overlay LASSO and core mito genes onto the MA plot for each subset
+```{r}
+library(tidyverse)
+
+#LASSO
+goi_lasso_subset <- read.table("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/LASSO/BCell_pos_genes.txt")
+goi_lasso_subset <- goi_lasso_subset$V1
+goi_lasso_subset <- gsub("`", "", goi_lasso_subset)
+
+plotdat <- topTables_DE$`B cells`
+
+cell_subset <- subset(lung9s3, subset = label.main_new == "B cells")
+test <- AverageExpression(cell_subset, group.by = "orig.ident")[[1]]
+test <- as.data.frame(test)
+test$log2exp <- log2(test$all + 1)
+test <- test %>% rownames_to_column("GeneID")
+
+plotdat <- merge(plotdat, test, by = "GeneID")
+plotdat <- plotdat[c("GeneID", "avg_log2FC", "p_val_adj", "log2exp")]
+#topTables_global <- topTables_global %>% column_to_rownames("GeneID")
+colnames(plotdat) <- c("GeneID","log2FoldChange", "padj", "baseMeanLog2")
+plotdat$sizef <- ifelse(abs(plotdat$log2FoldChange) >= 0.378 & plotdat$padj <= 0.05, "yes", "no")
+
+set.seed(101010)
+ggmaplot(plotdat, fdr = 0.05, fc = 1.3, size = 2.5, palette = c("red", "blue", "darkgray"), genenames = as.vector(plotdat$GeneID), label.select = goi_mito, legend = "top", top = 0, font.label = c("bold", 12), label.rectangle = F, font.legend = "bold", font.main = "bold", ggtheme = ggplot2::theme_minimal()) + scale_y_continuous(limits = c(-1.5, 1.5)) + theme(axis.text.x = element_text(color = "black", size = 12), axis.text.y = element_text(color = "black", size = 12), axis.title.x = element_text(size = 18), axis.title.y = element_text(size = 18), legend.text = element_text(size = 16)) +  guides(colour = guide_legend(override.aes = list(size=10)))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_AM.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_AM.pdf", width = 8, height = 6, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_monocytes.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_monocytes.pdf", width = 8, height = 6, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_Neutrophils.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_Neutrophils.pdf", width = 8, height = 6, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_CD4Tcells.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_CD4Tcells.pdf", width = 8, height = 6, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_CD8Tcells.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_CD8Tcells.pdf", width = 8, height = 6, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_NKcells.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_NKcells.pdf", width = 8, height = 6, units = "in")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_lasso_Bcells.pdf", width = 8, height = 6, units = "in")
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/06. June2024-PB/MAplot/maplot_mitocore_Bcells.pdf", width = 8, height = 6, units = "in")
+```
+
+
+
+
+
+

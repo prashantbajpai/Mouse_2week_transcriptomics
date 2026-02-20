@@ -1,0 +1,1528 @@
+---
+title: "Manuscript Figures.Rmd"
+author: "Prashant"
+date: "2023-08-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+library(readxl)
+library(writexl)
+library(Seurat)
+library(patchwork)
+library(gridExtra)
+library(msigdbr)
+library(fgsea)
+library(MAST)
+library(enrichplot)
+library(reshape2)
+library(RColorBrewer)
+
+#setwd("/Users/pbajpai/Documents/KIT/Kit_10x/")
+source('helper_functions.R')
+source('/Users/pbajpai/Documents/Rthemes/theme_publication.R')
+```
+
+```{r loadRdata}
+#lung9s2 <- readRDS("rds_obs/lung9s2_newannotation.rds")
+#Idents(lung9s2) <- "Group"
+
+lung9s3 <- readRDS("rds_obs/lung9s3_newannotation.rds")
+Idents(lung9s3) <- "Group"
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "Rv", "Hip1"))
+lung9s3$label.main_new <- factor(lung9s3$label.main_new, levels = c("AM", "IM", "Neutrophils", "DC", "Monocytes", "CD4 T Cells", "CD8 T Cells", "Tgd", "B cells", "NK cells", "NKT","ILC", "Endothelial cells", "Fibroblasts", "Epithelial cells"))
+
+lung9s3$Group <- gsub("Rv", "WT Mtb", lung9s3$Group)
+lung9s3$Group <- gsub("Hip1", "hip1 Mut", lung9s3$Group)
+lung9s3$Group <- factor(lung9s3$Group, levels = c("Uninfected", "WT Mtb", "hip1 Mut"))
+
+lung9s3$label.main_new2 <- lung9s3$label.main_new
+lung9s3$label.main_new2 <- gsub("AM", "1-AM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("IM", "2-IM", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Neutrophils", "3-Neutrophils", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("DC", "4-DC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Monocytes", "5-Monocytes", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD4 T Cells", "6-CD4 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("CD8 T Cells", "7-CD8 T Cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Tgd", "8-Tgd", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("B cells", "9-B cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NK cells", "10-NK cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("NKT", "11-NKT", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("ILC", "12-ILC", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Endothelial cells", "13-Endothelial cells", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Fibroblasts", "14-Fibroblasts", lung9s3$label.main_new2)
+lung9s3$label.main_new2 <- gsub("Epithelial cells", "15-Epithelial cells", lung9s3$label.main_new2)
+
+lung9s3$label.main_new2 <- factor(lung9s3$label.main_new2, levels = c("1-AM", "2-IM", "3-Neutrophils", "4-DC", "5-Monocytes", "6-CD4 T Cells", "7-CD8 T Cells", "8-Tgd", "9-B cells", "10-NK cells", "11-NKT","12-ILC", "13-Endothelial cells", "14-Fibroblasts", "15-Epithelial cells"))
+```
+
+```{r loadRdata}
+#Lung9s_10212022 <- readRDS("Lung9s_10212022.rds")
+topTables_DE_globalR43 <- readRDS("rds_obs/topTables_DE_globalR43.rds")
+topTables_DE_globalR43 <- topTables_DE_globalR43 %>% rownames_to_column("GeneID")
+topTables_DE <- readRDS("rds_obs/topTables_newannotR43.rds")
+topTables_DE_globalR43_noendo <- readRDS("rds_obs/topTables_DE_globalR43_noendo.rds")
+```
+
+Fig:UMAPs
+```{r}
+plotdat <- SplitObject(lung9s3, split.by = "Group")
+
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+
+lapply(seq_along(plotdat), function(i){
+  x <- plotdat[[i]]
+  set.seed(101010)
+  DimPlot(x, reduction = "umap", group.by = "label.main_new2", cols = cols, label = F, label.size = 4, pt.size = 0.1) + NoLegend() + theme(plot.title = element_blank(), axis.text.x = element_text(size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14))
+  filename <- paste("Figure_ver4_Aug 2023/Figures_Raw/UMAP_", names(plotdat)[i], ".pdf", sep = "") 
+  ggsave(filename, width = 4.5, height = 4, units = "in")
+  return(NULL)
+})
+
+plotdat <- lung9s3
+DimPlot(lung9s3, reduction = "umap", group.by = "label.main_new2", cols = cols, label = F, label.size = 4, pt.size = 0.1) + NoLegend() + theme(plot.title = element_blank(), axis.text.x = element_text(size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14))
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/UMAP_combined.pdf", width = 4.5, height = 4, units = "in")
+
+```
+
+# Group-wise UMAP
+```{r}
+DimPlot(lung9s3, reduction = "umap", group.by = "Group", cols = c("#240115", "#87F5FB", "#A63A50"), label = F, label.size = 4, pt.size = 0.1) + theme(plot.title = element_blank(), axis.text.x = element_text(size = 14), axis.text.y = element_text(size = 14), axis.title = element_text(size = 14))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/umap_groupwise.png", width = 5, height = 4, units = "in")
+```
+
+```{r}
+plotdat <- SplitObject(lung9s3, split.by = "Group")
+p1 <- DimPlot(plotdat[[1]], reduction = "umap", group.by = "label.main_new2", cols = cols, label = T, label.size = 4, pt.size = 0.1) 
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/all_subsets_vertical_1col.pdf", p1, width = 2.2, height = 3.5, units = "in" )
+
+p1 <- DimPlot(plotdat[[1]], reduction = "umap", group.by = "label.main_new2", cols = cols, label = F, label.size = 4, pt.size = 0.1) + theme(legend.direction = "horizontal", legend.position = "bottom") + guides(color=guide_legend(nrow=3,byrow=T, override.aes = list(size=4)))
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+p1
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/all_subsets_hori_3row.pdf", p1, width = 8, height = 0.8, units = "in" )
+
+p1 <- DimPlot(plotdat[[1]], reduction = "umap", group.by = "label.main_new2", cols = cols, label = F, label.size = 4, pt.size = 0.1) + theme(legend.direction = "horizontal", legend.position = "bottom") + guides(color=guide_legend(nrow=1,byrow=T, override.aes = list(size=4)))
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+p1
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/all_subsets_hori_1row.pdf", p1, width = 18, height = 0.5, units = "in" )
+```
+
+```{r frequencies}
+FreqTable_labelmain <- data.frame("SampleID" = lung9s3$SampleID, "label.main_new2" = lung9s3$label.main_new2) %>% 
+  group_by(SampleID, label.main_new2) %>% 
+  summarise(n_cells = n()) %>% 
+  ungroup() %>% 
+  spread(label.main_new2, n_cells, fill = 0)
+
+FreqTable_labelmain$SampleID <- c("UN_rep1", "UN_rep2", "UN_rep3", "RV_rep1", "RV_rep2", "RV_rep3", "Hip1_rep1", "Hip1_rep2", "Hip1_rep3")
+
+plotdat <- melt(FreqTable_labelmain, id.vars = c("SampleID")) %>%
+  group_by(SampleID) %>%
+  mutate(perc = 100 * value/sum(value)) %>%
+  ungroup()
+
+plotdat$variable <- factor(plotdat$variable, levels = c("1-AM", "2-IM", "3-Neutrophils", "4-DC", "5-Monocytes", "6-CD4 T Cells", "7-CD8 T Cells", "8-Tgd", "9-B cells", "10-NK cells", "11-NKT","12-ILC", "13-Endothelial cells", "14-Fibroblasts", "15-Epithelial cells"))
+
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+
+plotdat = plotdat[grep("UN", plotdat$SampleID, invert = T),]
+plotdat$SampleID <- factor(plotdat$SampleID, levels = c("RV_rep1", "RV_rep2", "RV_rep3", "Hip1_rep1", "Hip1_rep2", "Hip1_rep3"))
+
+ggplot(plotdat, aes(x = SampleID, y = perc, fill = variable)) + 
+  geom_bar(stat = "identity", position = position_stack(reverse = T)) + 
+  ylab("% of total cells") + xlab("") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_Publication() + 
+  scale_fill_manual(values = cols, name = "") +
+  theme(axis.text.x = element_text(),
+        axis.text.y = element_text(size = 14),
+        axis.title.y = element_text(size = 16),
+        axis.title.x = element_blank(),
+        legend.text = element_text(size = 12),
+        legend.key.size = unit(0.6, "cm"),
+        legend.position = "none") 
+  #guides(fill=guide_legend(nrow=2,byrow=TRUE))
+
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/annot_cell_distribution_NoUN.pdf", width = 5, height = 5, units = "in")
+```
+
+```{r}
+p1 <- ggplot(plotdat, aes(x = SampleID, y = perc, fill = variable)) + 
+  geom_bar(stat = "identity", position = position_stack(reverse = T)) + 
+  ylab("% of total cells") + xlab("") +
+  scale_y_continuous(expand = c(0, 0)) +
+  theme_Publication() + 
+  scale_fill_manual(values = cols, name = "") +
+  theme(axis.text.x = element_text(),
+        axis.text.y = element_text(size = 14),
+        axis.title.y = element_text(size = 16),
+        axis.title.x = element_blank(),
+        legend.text = element_text(size = 12),
+        legend.key.size = unit(0.6, "cm"),
+        legend.position = "bottom") 
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/all_groups_horizontal_bar_nrow3.pdf", p1, width = 8, height = 1.2, units = "in")
+```
+
+# Marker genes for each celltype
+```{r}
+markers <- c("Ptprc",
+             "Mertk", "Siglecf", "Itgax",
+             "S100a8",
+             "Ccl17",
+             "Cx3cr1", "Itgam", "Csf1r",
+             "Cd3d",
+             "Cd4", "Trat1",
+             "Cd8a","Cd8b1",
+             "Trdc", 
+             "Cd19", "Cd79a", "Ms4a1",
+             "Nkg7", "Gzmb","Ncr1", 
+             "Rora", "Tbx21",
+             "Pecam1",
+             "Npnt", "Col3a1", "Dcn",
+             "Sftpb")
+
+DoHeatmap(lung9s3, features = markers, group.by = "label.main_new", group.colors = cols, label = F, group.bar.height = 0.03, slot = "data", disp.max = 3) + NoLegend() + scale_fill_gradient2(high = "red", low = "white", mid = "white") + theme(axis.text = element_text(size = 14, face = "bold")) 
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/03. Mar2024-PB/heatmap_cellmarkers.png", width = 20, height = 8, units = "in")
+```
+
+
+Fig: Violin plot of all DEGs
+```{r}
+genes_up <- topTables_global[topTables_global$avg_log2FC >= 0.378 & topTables_global$p_val_adj <= 0.05,]
+genes_down <- topTables_global[topTables_global$avg_log2FC <= -0.378 & topTables_global$p_val_adj <= 0.05,]
+
+```
+
+```{r}
+lapply(rownames(genes_up), function(x){
+  gene_voilin_3grps(gene = x, seurat_obj = lung9s3) + theme(axis.text.x = element_blank(), strip.text.x = element_blank(), plot.title = element_blank())
+  ggsave(paste("Figure_ver4_Aug 2023/Figures_Raw/vlnplot_up_noname_", x, ".pdf", sep = ""), width = 7, height = 2.5, units = "in")
+  return(NULL)
+})
+```
+
+```{r}
+lapply(rownames(genes_down), function(x){
+  gene_voilin_3grps(gene = x, seurat_obj = lung9s3) + theme(axis.text.x = element_blank(), strip.text.x = element_blank(), plot.title = element_blank())
+  ggsave(paste("Figure_ver4_Aug 2023/Figures_Raw/vlnplot_down_noname_", x, ".pdf", sep = ""), width = 7, height = 2.5, units = "in")
+  return(NULL)
+})
+```
+
+#Vln plot of Hif1a
+```{r}
+p1_celltypes <- gene_voilin_2grps_split(gene = "Hif1a", seurat_obj = lung9s3)
+
+lapply(seq_along(p1_celltypes), function(i){
+  ggsave(paste("Figure_ver4_Aug 2023/Figures_Raw/vlnplot_hif1a_", names(p1_celltypes)[i], ".pdf"), p1_celltypes[[i]], width = 4, height = 5)
+})
+```
+
+```{r}
+p1 <- gene_voilin_3grps(gene = x, seurat_obj = lung9s3) + theme(axis.text.x = element_blank(), strip.text.x = element_blank(), plot.title = element_blank(), legend.position = "bottom", legend.direction = "vertical")
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/all_groups_vertical.pdf", p1, width = 0.9, height = 0.9, units = "in")
+```
+
+#Vln plot of fatty acid metabolism
+```{r}
+library(jsonlite)
+test <- read_json("~/Downloads/test.json")
+test <- test$associations
+test <- sapply(test, function(x){
+  x <- x$gene$symbol
+})
+test <- stringr::str_to_sentence(test)
+```
+
+```{r}
+goi <- test[-c(4,6,11,14, 20, 22, 23, 25, 34, 36, 39, 41, 42, 43, 45)]
+plotlist <- lapply(goi, function(x){
+  print(x)
+  p1 <- gene_voilin_3grps(gene = x, seurat_obj = lung9s3) 
+})
+
+names(plotlist) <- goi
+
+lapply(seq_along(plotlist), function(i){
+  ggsave(paste("Figure_ver4_Aug 2023/Figures_Raw/vlnplot_fattyacid_", names(plotlist)[i], ".pdf"), plotlist[[i]], width = 25, height = 5)
+})
+```
+
+#Global Heatmap of DEGs
+```{r}
+library(ComplexHeatmap)
+plotdat <- lung9s3
+plotdat$main_group <- paste(plotdat$label.main_new2, plotdat$Group, sep = "_")
+Idents(plotdat) <- "main_group"
+
+genes_up <- topTables_DE_globalR43_noendo[topTables_DE_globalR43_noendo$avg_log2FC >= 0.378 & topTables_DE_globalR43_noendo$p_val_adj <= 0.05,] %>% rownames_to_column("GeneID")
+genes_down <- topTables_DE_globalR43_noendo[topTables_DE_globalR43_noendo$avg_log2FC <= -0.378 & topTables_DE_globalR43_noendo$p_val_adj <= 0.05,] %>% rownames_to_column("GeneID")
+goi <- c(genes_up$GeneID, genes_down$GeneID)
+
+mat <- AverageExpression(plotdat, group.by = "main_group", return.seurat = F, slot = "counts")[[1]] %>% as.matrix()
+
+colnames(mat) <- sub("^[^-]*.", "", colnames(mat))
+mat <- mat[,grep("Uninfected|Fibroblasts|Epithelial|Endothelial", colnames(mat), invert = T)]
+
+mat <- mat[, c(2,1,10,9,12,11,14,13,16,15,18,17,20,19,22,21,24,23,4,3,6,5,8,7)]
+#mat <- mat[, c(2,1,8,7, 10,9, 12,11, 14,13, 16,15, 4,3, 6,5)]
+mat <- mat[goi,]
+#mat <- mat[,c("1-AM_hip1", "1-AM_Rv", "2-NK cells_hip1", "2-NK cells_Rv", "NKT-Rv")]
+#remove genes with zero expression
+mat <- t(scale(t(mat)))
+#cluster_anno <- factor(colnames(mat), levels = colnames(mat))
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324')
+anno_df <- data.frame(label = colnames(mat), 
+                     Cells = gsub("-.*", "", colnames(mat)),
+                     Group = gsub(".*-", "", colnames(mat)))
+anno_df$Cells <- paste(as.character(rep(1:12, each = 2)), anno_df$Cells, sep = "-")
+#anno_df <- anno_df %>% arrange(cells, desc(group))
+#cluster_anno <- factor(unique(anno_df$cells), levels = unique(anno_df$cells))
+
+anno_df$Cells <- factor(anno_df$Cells, levels = unique(anno_df$Cells))
+anno_df$Group <- factor(anno_df$Group, levels = c("WT Mtb", "hip1 Mut"))
+
+colcells <- cols
+names(colcells) <- unique(anno_df$Cells)
+colcells <- factor(colcells, levels = cols)
+
+rowclust = hclust(dist(mat), method = 'ward.D2')
+
+pdf("Manuscript/Figures/dump/global_dendogram.pdf", width = 60, height = 20)
+plot(as.dendrogram(rowclust))
+dev.off()
+
+test <- cutree(rowclust, h = 30)
+test <- test[test == 1]
+test <- unique(names(test))
+mat1 <- mat[test,]
+
+ha = HeatmapAnnotation(df = anno_df[,2:3], col = list(Cells = colcells, Group = c("WT Mtb" = "#808000", "hip1 Mut" = "#000075")), annotation_name_side = "left", annotation_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")))
+
+colnames(mat) <- gsub("-.*", "", colnames(mat))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/global_heatmap_withendo.pdf", width = 14, height = 13)
+Heatmap(mat, name = "Expression",  
+        column_split = rep(1:12, each = 2),
+        row_split = NULL,
+        cluster_columns = FALSE,
+        show_column_dend = FALSE,
+        cluster_column_slices = FALSE,
+        column_title_gp = gpar(fontsize = 16),
+        column_gap = unit(1, "mm"),
+        cluster_rows = F,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 16),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        top_annotation = ha,
+        show_column_names = F,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+
+#Fig: MA plot
+```{r}
+library(tidyverse)
+
+plotdat <- topTables_DE_globalR43_noendo %>% rownames_to_column("GeneID")
+
+genes_up <- topTables_DE_globalR43_noendo[topTables_DE_globalR43_noendo$avg_log2FC >= 0.378 & topTables_DE_globalR43_noendo$p_val_adj <= 0.05,]
+genes_down <- topTables_DE_globalR43_noendo[topTables_DE_globalR43_noendo$avg_log2FC <= -0.378 & topTables_DE_globalR43_noendo$p_val_adj < 0.05,]
+
+test <- AverageExpression(lung9s3, group.by = "orig.ident")[[1]]
+test <- as.data.frame(test)
+test$log2exp <- log2(test$all + 1)
+test <- test %>% rownames_to_column("GeneID")
+
+plotdat <- merge(plotdat, test, by = "GeneID")
+plotdat <- plotdat[c("GeneID", "avg_log2FC", "p_val_adj", "log2exp")]
+#topTables_global <- topTables_global %>% column_to_rownames("GeneID")
+colnames(plotdat) <- c("GeneID","log2FoldChange", "padj", "baseMeanLog2")
+plotdat$sizef <- ifelse(abs(plotdat$log2FoldChange) >= 0.378 & plotdat$padj <= 0.05, "yes", "no")
+
+set.seed(101010)
+ggmaplot(plotdat, fdr = 0.05, fc = 1.3, size = 2.5, palette = c("red", "blue", "darkgray"), genenames = as.vector(plotdat$GeneID), label.select = c(rownames(genes_up), rownames(genes_down)), legend = "top", top = 20, font.label = c("bold", 12), label.rectangle = F, font.legend = "bold", font.main = "bold", ggtheme = ggplot2::theme_minimal()) + scale_y_continuous(limits = c(-4, 4)) + theme(axis.text.x = element_text(color = "black", size = 12), axis.text.y = element_text(color = "black", size = 12), axis.title.x = element_text(size = 18), axis.title.y = element_text(size = 18), legend.text = element_text(size = 16)) +  guides(colour = guide_legend(override.aes = list(size=10)))
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/05. May2024-PB/global_MAplot_noendo.pdf", width = 8, height = 6, units = "in")
+
+```
+
+# MA plot with larger dots and no legend
+```{r}
+load(file = "rds_obs/maplot_files_may242024.RData")
+rm(name, fc, labs_data)
+data$size <- ifelse(data$sig == "NS", 2, 3.3)
+data$alpha <- ifelse(data$sig == "NS", 0.99, 1)
+data$lfc[data$lfc >= 3 | data$lfc <= -3] <- datawizard::rescale(data$lfc[data$lfc >= 3 | data$lfc <= -3], to = c(-2,2))
+fc <- 1.3
+
+set.seed(101010)
+ggplot(data, aes(x = mean, y = lfc)) + geom_point(aes(color = sig, alpha = alpha), size = data$size) + scale_x_continuous(breaks = seq(0, max(data$mean), 2)) + labs(x = "Log2 mean expression", y = "Log2 fold change", title = "", color = "") + geom_hline(yintercept = c(0, -log2(fc), log2(fc)), linetype = c(1, 2, 2), color = c("black", "black", "black")) + scale_color_manual(values = c("red", "blue", "grey70")) + theme_minimal() + scale_y_continuous(limits = c(-2, 2)) + scale_x_continuous(limits = c(0, 6)) + theme(axis.text.x = element_text(color = "black", size = 12), axis.text.y = element_text(color = "black", size = 12), axis.title.x = element_text(size = 18), axis.title.y = element_text(size = 18), legend.text = element_text(size = 16, face = "bold"), legend.position = "top", plot.title = element_blank()) +  guides(colour = guide_legend(override.aes = list(size=10))) + scale_alpha(guide = "none")
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/MA-plot/global_MAplot_noendo.pdf", width = 7, height = 6, units = "in")
+```
+
+#Fig: Global GSEA
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GSE", "GOBP", "GOMF", "REACTOME", "KEGG", "HALLMARK")),]
+filtered_gene_sets <- all_gene_sets[all_gene_sets$gs_name %in% c("GOBP_OXIDATIVE_PHOSPHORYLATION", "GOBP_ATP_SYNTHESIS_COUPLED_ELECTRON_TRANSPORT", "GOMF_ELECTRON_TRANSFER_ACTIVITY", "GOBP_MITOCHONDRIAL_ELECTRON_TRANSPORT_NADH_TO_UBIQUINONE", "GOBP_MITOCHONDRION_ORGANIZATION", "GOBP_CELLULAR_RESPIRATION", "GOMF_TRANSPORTER_ACTIVITY", "GOMF_OXIDOREDUCTASE_ACTIVITY", "GOMF_NADH_DEHYDROGENASE_ACTIVITY"),]
+
+c("GOMF_NADH_DEHYDROGENASE_ACTIVITY", "GOMF_ELECTRON_TRANSFER_ACTIVITY", "GOMF_OXIDOREDUCTASE_ACTIVITY", "GOMF_TRANSPORTER_ACTIVITY", "GOMF_CALCIUM_ION_BINDING", "GOMF_LIPID_BINDING", "GOMF_SEROTONIN_RECEPTOR_ACTIVITY", "GOMF_CALCIUM_DEPENDENT_PROTEIN_BINDING", "GOBP_AEROBIC_RESPIRATION", "GOBP_OXIDATIVE_PHOSPHORYLATION" , "GOBP_CELLULAR_RESPIRATION", "GOBP_ANTIBACTERIAL_PEPTIDE_PRODUCTION", "GOBP_PROGRAMMED_CELL_DEATH", "GOBP_CELLULAR_LIPID_CATABOLIC_PROCESS", "GOBP_MITOCHONDRION_ORGANIZATION", "GOBP_ION_TRANSMEMBRANE_TRANSPORT", "GOBP_CELLULAR_AMIDE_METABOLIC_PROCESS", "GOBP_ATP_SYNTHESIS_COUPLED_ELECTRON_TRANSPORT",  "GOBP_MITOCHONDRIAL_ELECTRON_TRANSPORT_NADH_TO_UBIQUINONE", "GOBP_NEGATIVE_REGULATION_OF_INTERLEUKIN_6_MEDIATED_SIGNALING_PATHWAY", "GOBP_POSITIVE_REGULATION_OF_ANTIBACTERIAL_PEPTIDE_PRODUCTION", "REACTOME_MITOCHONDRIAL_BIOGENESIS")
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_DE), function(i){
+  x = topTables_DE[[i]]
+  print(names(topTables_DE)[i])
+  preranked = x %>%
+    mutate_at(2,~replace(., . == 0, min(.[.>0], na.rm = TRUE)*0.1)) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) = names(topTables_DE)
+write_xlsx(fgsea_genelist, 'Figure_ver4_Aug 2023/Figures_Raw/fgsea_genelist_allcelltypes_clusters_lung9s3.xlsx')
+```
+
+
+```{r}
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  #x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 50)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+combined_fgsea <- combined_fgsea[c("AM", "IM", "Neutrophils", "Monocytes", "CD4 T Cells", "CD8 T Cells", "NK cells")]
+combined_fgsea = bind_rows(combined_fgsea, .id = 'cell_type')
+
+#keep only duplicated entries
+#combined_fgsea = combined_fgsea[combined_fgsea$pathway %in% combined_fgsea$pathway[duplicated(combined_fgsea$pathway)],]
+
+#keep pathways of interest
+#mitochondrial, atp, interleukin, cytokines, chemokines, tca, ETC, innate, adaptive
+plotdat <- combined_fgsea
+#plotdat <- combined_fgsea[grep("mitochond|ATP|fatty|oxidative|NADH|TCA|electron|lipid|cytokine|interleukin", combined_fgsea$pathway3, ignore.case = T),]
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+#pathorder <- c(grep("interleukin|cytokine",unique(plotdat$pathway3), invert = T, value = T, ignore.case = T), grep("interleukin|cytokine",unique(plotdat$pathway3), invert = F, value = T, ignore.case = T))
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = rev(c("GOBP OXIDATIVE PHOSPHORYLATION", "GOBP ATP SYNTHESIS COUPLED ELECTRON TRANSPORT", "GOMF ELECTRON TRANSFER ACTIVITY", "GOBP MITOCHONDRIAL ELECTRON TRANSPORT NADH TO\nUBIQUINONE", "GOBP MITOCHONDRION ORGANIZATION", "GOBP CELLULAR RESPIRATION", "GOMF TRANSPORTER ACTIVITY", "GOMF OXIDOREDUCTASE ACTIVITY", "GOMF NADH DEHYDROGENASE ACTIVITY")))
+#plotdat$cell_type <- factor(plotdat$cell_type, levels = c("AM", "IM", "Neutrophils", "DC", "Monocytes", "CD4 T Cells", "CD8 T Cells", "Tgd", "B cells", "NK cells", "NKT","ILC", "Endothelial cells", "Fibroblasts", "Epithelial cells"))
+plotdat$cell_type <- factor(plotdat$cell_type, levels = c("AM", "IM", "Neutrophils", "Monocytes", "CD4 T Cells", "CD8 T Cells", "NK cells"))
+
+ggplot(plotdat, aes(x = cell_type, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b', limits = c(0,1.81)) +
+    scale_size(range = c(3, 8), breaks = c(0, 50, 100, 200, 300, 400)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+ggsave('Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/03. Mar2024-PB/GSEA_allcelltypes_clusters_merged.pdf', width = 12, height = 8, units = 'in', limitsize = F)
+ggsave('Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/GSEA_allcelltypes_clusters_merged_filtered.pdf', width = 8, height = 5, units = 'in', limitsize = F)
+```
+
+#Fig: Gene Violin of cellchat genes
+```{r}
+library(CellChat)
+goi <- c("Cd40", "L1cam", "Entpd1", "Fgf7", "Cd34", "Rarres2", "Xcr1", "Cd80", "Tnf", "Lair1", "Angpt1", "Wnt5a", "Vcam1", "Ptprm", "Bst2", "Ephb1", "Ephb2")
+lapply(goi, function(x){
+  gene_voilin_3grps(gene = x, seurat_obj = lung9s3) + theme(axis.text.x = element_blank(), strip.text.x = element_text(angle = 60)) + scale_x_discrete(drop=FALSE)  
+  ggsave(paste("Figure_ver4_Aug 2023/Figures_Raw/cellchat_hip_", x, ".pdf", sep = ""), width = 12, height = 4, units = "in")
+  return(NULL)
+})
+# object_list <- readRDS("cellchat_lung9s3_list_label.manual2.rds")
+# cellchat_hip <- object_list[[3]]
+# cellchat <- mergeCellChat(object_list, add.names = c("UN", "RV", "Hip1"))
+# rankNet(cellchat, mode = "comparison", comparison = c(2,3), stacked = T, do.stat = F, color.use = brewer.pal(3, "Set1"))
+# 
+# netAnalysis_contribution(cellchat_hip, signaling = "EPHB")
+#netVisual_aggregate(cellchat_hip, signaling = "CD40", layout = "circle", pt.title = 2, title.space = 0, arrow.size = 0.8, vertex.label.cex = 1, remove.isolate = T)
+```
+
+```{r}
+library(pathview)
+library(biomaRt)
+
+genelist <- ref.genelist(topTables_DE$AM)
+
+pathview(gene.data = genelist, pathway.id = "mmu00190", species = "mouse",limit = list(gene=1, cpd=1), low=list(gene="#2166ac"), high=list(gene="#b2182b"), kegg.native = T)
+
+pathview_AM <- pathview_meta(genelist, pathway.id = "mmu00190", species = "mouse")
+pathview_AM$target <- "OXPHOS"
+
+write_xlsx(pathview_AM, "Figure_ver4_Aug 2023/Figures_Raw/oxphos_AM_hip_vs_rv.xlsx")
+```
+
+#GSEA for AM subsets
+```{r}
+macro <- subset(lung9s3, subset = label.main == "Macrophages")
+
+#redo normalizations and clustering 
+macro <- FindVariableFeatures(macro, verbose = F)
+macro <- ScaleData(macro, verbose = F)
+macro <- NormalizeData(macro,  verbose = F)
+macro <- RunPCA(macro, verbose = F, npcs = 20)
+#ElbowPlot(macro)
+macro <- RunUMAP(macro, dims = 1:15, verbose = F)
+macro <- FindNeighbors(macro, dims = 1:15)
+macro <- FindClusters(macro, resolution = 0.1)
+```
+
+```{r}
+topmarkersPercluster <- lapply(unique(macro$seurat_clusters), function(x){
+  message(paste("running cluster:", x, sep = ""))
+  cluster_marker <- FindMarkers(macro, ident.1 = x, min.pct = 0.25, only.pos = T)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- paste("Cluster",unique(macro$seurat_clusters))
+write_xlsx(topmarkersPercluster, "Figure_ver4_Aug 2023/Figures_Raw/macro_seuratcluster_markers.xlsx")
+```
+
+```{r}
+label.subset <- macro@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "AM 1", ifelse(seurat_clusters == 1, "AM 2", ifelse(seurat_clusters == 3, "AM 3", "IM")))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("AM 1", "AM 2", "AM 3", "IM"))
+
+macro <- AddMetaData(macro, metadata = label.subset)
+
+DimPlot(macro, group.by = "seurat_clusters")
+DimPlot(macro, group.by = "label.subset")
+```
+
+# Markers for each subset that Kit asked to plot
+```{r}
+goi <- c("Scgb1a1", "Chil3", "Ear2", "Fpr2", "Ly6a", "Cd93", "Col4a1", "Mki67", "Top2a", "Tubb5", "Cks2", "C1qa", "Cx3cr1", "Apoe", "Ccr2", "Cd14", "Cd83")
+
+lapply(goi, function(x){
+  out <- VlnPlot(macro, group.by = "label.subset", features = x, pt.size = 0) + theme(legend.position = "none", axis.title.x = element_blank(), axis.title.y = element_blank())
+  ggsave(paste("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/04. Apr2024-PB/vlnplot_", x, ".pdf", sep = ""), out, width = 4, height = 4, units = "in")
+})
+```
+
+```{r}
+plotdat <- SplitObject(macro, split.by = "Group")
+lapply(seq_along(plotdat), function(i){
+  x <- plotdat[[i]]
+  DimPlot(x, reduction = "umap", group.by = "label.subset", cols = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F, label.size = 3, pt.size = 1.2) + theme(plot.title = element_blank(), legend.position = "none")
+  filename <- paste("Figure_ver4_Aug 2023/Figures_Raw/macrophage_umap_", names(plotdat)[i], ".pdf", sep = "") 
+  ggsave(filename, width = 4.5, height = 4, units = "in")
+  return(NULL)
+})
+rm(plotdat)
+```
+
+```{r}
+#Dotplot of selected markers to annotate the subset
+markers <- c("Marco", "Mertk", "Cd68", "Itgax", "Siglecf", "Cx3cr1", "Itgam")
+
+DotPlot(macro, features = markers, group.by = "label.subset", scale = F) +
+  xlab("") + ylab("") +
+  scale_color_gradient(high = "red", low = "blue") +
+  scale_size(range = c(1, 7))
+
+ggsave("Figure_ver4_Aug 2023/Figures_Raw/macrophage_doplot_markers.pdf", width = 9, height = 5, units = "in")
+```
+
+```{r}
+topTables_macro = sapply(as.character(unique(macro$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(macro,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+
+write_xlsx(topTables_macro, "Figure_ver4_Aug 2023/Figures_Raw/toptable_macrophage_hip1_vs_rv.xlsx")
+```
+
+#Fig: GSEA
+```{r}
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GSE", "GOBP", "GOMF", "REACTOME", "KEGG", "HALLMARK")),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_macro), function(i){
+  x = topTables_macro[[i]]
+  print(names(topTables_macro)[i])
+  preranked = x %>%
+    mutate_at(2,~replace(., . == 0, min(.[.>0], na.rm = TRUE)*0.1)) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) = names(topTables_macro)
+write_xlsx(fgsea_genelist, 'Figure_ver4_Aug 2023/Figures_Raw/fgsea_genelist_macrophage_clusters_lung9s3.xlsx')
+```
+
+```{r}
+gsea_signif = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  #x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_signif, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 50)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+combined_fgsea$`AM 2` <- NULL
+combined_fgsea$IM <- NULL
+combined_fgsea = bind_rows(combined_fgsea, .id = 'cell_type')
+
+#keep only duplicated entries
+#combined_fgsea = combined_fgsea[combined_fgsea$pathway %in% combined_fgsea$pathway[duplicated(combined_fgsea$pathway)],]
+
+#keep pathways of interest
+#mitochondrial, atp, interleukin, cytokines, chemokines, tca, ETC, innate, adaptive
+plotdat <- combined_fgsea
+plotdat <- combined_fgsea[grep("mitochond|ATP|fatty|oxidative|NADH|TCA|electron|lipid|cytokine|interleukin", combined_fgsea$pathway3, ignore.case = T),]
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+pathorder <- c(grep("interleukin|cytokine",unique(plotdat$pathway3), invert = T, value = T, ignore.case = T), grep("interleukin|cytokine",unique(plotdat$pathway3), invert = F, value = T, ignore.case = T))
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = rev(pathorder))
+ggplot(plotdat, aes(x = cell_type, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(1, 8), breaks = c(0, 50, 100, 200, 300, 400)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+ggsave('Figure_ver4_Aug 2023/Figures_Raw/GSEA_macrophage_clusters_merged.pdf', width = 10, height = 15, units = 'in', limitsize = F)
+```
+
+Fig; T cell
+```{r}
+tcell <- subset(lung9s3, subset = label.main == "T cells")
+
+#redo normalizations and clustering 
+tcell <- FindVariableFeatures(tcell, verbose = F)
+tcell <- ScaleData(tcell, verbose = F)
+tcell <- NormalizeData(tcell,  verbose = F)
+tcell <- RunPCA(tcell, verbose = F, npcs = 20)
+tcell <- RunUMAP(tcell, dims = 1:15, verbose = F)
+tcell <- FindNeighbors(tcell, dims = 1:15)
+tcell <- FindClusters(tcell, resolution = 1)
+
+#label tcell subsets
+label.subset <- tcell@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters %in% c(1, 2, 3, 5, 6, 12, 13), "CD4+ T Naive", ifelse(seurat_clusters == 8, "CD4+ T Act", ifelse(seurat_clusters == 9, "CD4+ T Memory", ifelse(seurat_clusters %in% c(0, 11, 4), "CD8+ T Naive", ifelse(seurat_clusters == 10, "CD8+ T Act", "CD8+ T Memory")))))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = unique(label.subset$label.subset)[c(1, 4, 3, 2, 5, 6)])
+
+tcell <- AddMetaData(tcell, metadata = label.subset)
+
+DimPlot(tcell, reduction = "umap", group.by = "label.subset", cols = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F, label.size = 3, pt.size = 1.2) + theme(legend.position = "none", plot.title = element_blank())
+```
+
+```{r}
+Idents(tcell) <- "label.subset"
+topmarkersPercluster <- lapply(unique(tcell$label.subset), function(x){
+  message(paste("running subset:", x, sep = ""))
+  cluster_marker <- FindMarkers(tcell, ident.1 = x, min.pct = 0.1, only.pos = T)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- unique(tcell$label.subset)
+topmarkersPerclustersignif <- lapply(topmarkersPercluster, function(x){
+  out <- x[x$avg_log2FC >= 0.378 & x$p_val_adj <= 0.05,]
+  out <- out[order(out$avg_log2FC, decreasing = T),]
+})
+write_xlsx(topmarkersPerclustersignif, "Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/Suppliment-2024/04. Apr2024-PB/tcell_seuratcluster_markers.xlsx")
+```
+
+
+
+#pathway enrichment
+```{r}
+library(clusterProfiler)
+library(enrichplot)
+
+mh_all <- read.gmt("gmt files/mh.all.v2023.1.Mm.symbols.gmt")
+m2_cp <- read.gmt("gmt files/m2.cp.v2023.1.Mm.symbols.gmt")
+m3_all <- read.gmt("gmt files/m3.all.v2023.1.Mm.symbols.gmt")
+tcell_mh <- enricher(gene = topmarkersPercluster$`CD4+ T Naive`$GeneID, TERM2GENE = mh_all)
+
+tcell_gobp <- enrichGO(gene = str_to_upper(topmarkersPercluster$`CD4+ T Naive`$GeneID), ont = "BP",
+                   OrgDb ="org.Hs.eg.db", keyType = "SYMBOL", pvalueCutoff = 0.05, pAdjustMethod = "fdr")
+tcell.go <- tcell.go@result
+tcell.go <- tcell.go[tcell.go$p.adjust <= 0.05 & tcell.go$Count > 5,]
+
+
+```
+
+```{r}
+plotdat <- SplitObject(tcell, split.by = "Group")
+
+lapply(seq_along(plotdat), function(i){
+  x <- plotdat[[i]]
+  DimPlot(x, reduction = "umap", group.by = "label.subset", cols = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F, label.size = 3, pt.size = 1.2) + theme(legend.position = "none", plot.title = element_blank())
+  filename <- paste("Figures_ver2/Figure4/umap_", names(plotdat)[i], ".pdf", sep = "") 
+  ggsave(filename, width = 4.5, height = 4, units = "in")
+  return(NULL)
+})
+rm(plotdat)
+
+#heatmap for genes different between clusters
+goi <- bind_rows(topmarkersPercluster, .id = "cluster") %>%
+  mutate(subset = ifelse(cluster %in% c("Cluster 1","Cluster 2","Cluster 3", "Cluster 5","Cluster 6","Cluster 12", "Cluster 13"), "CD4+ T Naive", ifelse(cluster == "Cluster 8", "CD4+ T Act", ifelse(cluster == "Cluster 9", "CD4+ T Memory", ifelse(cluster %in% c("Cluster 0","Cluster 11","Cluster 4"), "CD8+ T Naive", ifelse(cluster == "Cluster 10", "CD8+ T Act", "CD8+ T Memory")))))) %>%
+  arrange(subset) %>%
+  group_by(subset) %>%
+  top_n(40, avg_log2FC)
+target <- c("CD4+ T Naive",  "CD4+ T Memory", "CD4+ T Act", "CD8+ T Naive", "CD8+ T Memory", "CD8+ T Act")
+goi <- goi %>% arrange(factor(subset, levels = target))
+
+plotdat <- tcell
+Idents(plotdat) <- "label.subset"
+DoHeatmap(plotdat, features = goi$GeneID, group.colors = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666")) + theme(axis.text = element_blank())
+ggsave("Figures_ver2/Figure4/subset_heatmap_top40.png", width = 14, height = 10, units = "in")
+
+#Dotplot of selected markers to annotate the subset
+markers <- c("Ptprc","Cd3d","Cd3e", "Cd4","Cd8a","Cd8b1")
+markers <- c("Cd3d", "Cd4", "Cd8a","Cd8b1","Ccr7", "Sell", "Cd44", "Ccl5","Tnfrsf4","Il2rb", "Rora", "Gzmb", "Gzma")
+
+DotPlot(tcell, features = markers, group.by = "label.subset", scale = F) +
+  xlab("") + ylab("") +
+  scale_color_gradient(high = "red", low = "blue") +
+  scale_size(range = c(4, 7))
+
+ggsave("Figures_ver2/Figure4/doplot_markers.pdf", width = 11, height = 5, units = "in")
+```
+
+```{r}
+#DEGS
+topTables_tcell = sapply(as.character(unique(tcell$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(tcell,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "Hip1", 
+                                             ident.2 = "Rv",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+write_xlsx(topTables_tcell,"Figure_ver4_Aug 2023/Figures_Raw/DEGs_tcell_clusters_hip_vs_rv_lung9s3.xlsx")
+```
+
+```{r}
+##gsea
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GSE", "GOBP", "GOMF", "REACTOME", "KEGG", "HALLMARK")),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_tcell), function(i){
+  x = topTables_tcell[[i]]
+  print(names(topTables_tcell)[i])
+  preranked = x %>%
+    mutate_at(2,~replace(., . == 0, min(.[.>0], na.rm = TRUE)*0.1)) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) = names(topTables_tcell)
+write_xlsx(fgsea_genelist, 'Figure_ver4_Aug 2023/Figures_Raw/fgsea_genelist_tcell_clusters_lung9s3.xlsx')
+```
+
+```{r}
+gsea_reactome = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_reactome, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 50)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+combined_fgsea = bind_rows(combined_fgsea, .id = 'cell_type')
+
+plotdat <- combined_fgsea
+
+plotdat <- combined_fgsea[grep("mitochond|ATP|fatty|oxidative|NADH|TCA|electron|lipid|cytokine|interleukin", combined_fgsea$pathway3, ignore.case = T),]
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+pathorder <- c(grep("interleukin|cytokine",unique(plotdat$pathway3), invert = T, value = T, ignore.case = T), grep("interleukin|cytokine",unique(plotdat$pathway3), invert = F, value = T, ignore.case = T))
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = rev(pathorder))
+
+ggplot(plotdat, aes(x = cell_type, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(1, 8), breaks = c(0, 20, 40, 60, 80, 100, 120)) +
+    theme(axis.text.x = element_text(size = 10, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 10),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+ggsave('Figure_ver4_Aug 2023/Figures_Raw/GSEA_tcell_clusters_merged.pdf', width = 10, height = 15, units = 'in', limitsize = F)
+
+```
+#Fig: Endothelial cells
+```{r}
+endo <- subset(lung9s3, subset = label.main == "Endothelial cells")
+
+#redo normalizations and clustering 
+endo <- FindVariableFeatures(endo, verbose = F)
+endo <- ScaleData(endo, verbose = F)
+endo <- NormalizeData(endo,  verbose = F)
+endo <- RunPCA(endo, verbose = F, npcs = 20)
+endo <- RunUMAP(endo, dims = 1:15, verbose = F)
+endo <- FindNeighbors(endo, dims = 1:15)
+endo <- FindClusters(endo, resolution = 0.1)
+
+#label endo subsets
+label.subset <- endo@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "gCap", ifelse(seurat_clusters == 1, "P vascular Endo", ifelse(seurat_clusters == 2, "aCap", ifelse(seurat_clusters == 3, "Venous maEC", ifelse(seurat_clusters == 4, "D vascular Endo", ifelse(seurat_clusters == 5, "Unknown Endo", "Lypmhatic Endo"))))))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("P vascular Endo", "D vascular Endo", "Venous maEC", "gCap", "aCap", "Lypmhatic Endo", "Unknown Endo"))
+
+endo <- AddMetaData(endo, metadata = label.subset)
+```
+
+```{r}
+p1_subset <- gene_voilin_subset_2grps_split("Hif1a",seurat_obj = endo)
+
+lapply(seq_along(p1_subset), function(i){
+  ggsave(paste("Figure_ver4_Aug 2023/Figures_Raw/vlnplot_hif1a_endo_", names(p1_subset)[i], ".pdf"), p1_subset[[i]], width = 4, height = 5)
+})
+```
+
+```{r}
+plotdat <- SplitObject(endo, split.by = "Group")
+
+lapply(seq_along(plotdat), function(i){
+  x <- plotdat[[i]]
+  DimPlot(x, reduction = "umap", group.by = "label.subset", cols = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F, label.size = 3, pt.size = 1.2) + theme(legend.position = "none", plot.title = element_blank())
+  filename <- paste("Figures_ver2/Figure7/umap_", names(plotdat)[i], ".pdf", sep = "") 
+  ggsave(filename, width = 4.5, height = 4, units = "in")
+  return(NULL)
+})
+rm(plotdat)
+
+#heatmap by subset
+goi <- bind_rows(topmarkersPercluster, .id = "cluster") %>%
+  mutate(subset = ifelse(cluster == "Cluster 0", "gCap", ifelse(cluster == "Cluster 1", "P vascular Endo", ifelse(cluster == "Cluster 2", "aCap", ifelse(cluster == "Cluster 3", "Venous maEC", ifelse(cluster == "Cluster 4", "D vascular Endo", ifelse(cluster == "Cluster 5", "Unknown Endo", "Lypmhatic Endo"))))))) %>%
+  arrange(subset) %>%
+  group_by(subset) %>%
+  top_n(40, avg_log2FC)
+
+target <- c("P vascular Endo", "D vascular Endo", "Venous maEC", "gCap", "aCap", "Lypmhatic Endo", "Unknown Endo")
+goi <- goi %>% arrange(factor(subset, levels = target))
+
+plotdat <- endo
+
+Idents(plotdat) <- "label.subset"
+DoHeatmap(plotdat, features = goi$GeneID, group.colors = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F) + theme(axis.text = element_blank())
+ggsave("Figures_ver2/Figure7/subset_heatmap_top40_noname.png", width = 24, height = 12, units = "in")
+
+
+#Dotplot of selected markers to annotate the subset
+markers <- c("Gsn", "Bgn", "Hba-a1", "Hba-a2", "Vegfc", "Prss23", "Kit", "Car4", "Kdr", "Flt4", "Ccl21a")
+
+
+DotPlot(endo, features = markers, group.by = "label.subset", scale = F) +
+  xlab("") + ylab("") +
+  scale_color_gradient(high = "red", low = "blue") +
+  scale_size(range = c(1, 5))
+
+ggsave("Figures_ver2/Figure7/doplot_markers.pdf", width = 11, height = 4, units = "in")
+```
+
+```{r}
+#Degs between subsets for Hip1 vs Rv
+topTables_endo = sapply(as.character(unique(endo$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(endo,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "Hip1", 
+                                             ident.2 = "Rv",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+
+write_xlsx(topTables_endo, "Figure_ver4_Aug 2023/Figures_Raw/DEGs_endo_clusters_hip_vs_rv_lung9s3.xlsx")
+```
+
+```{r}
+##gsea
+all_gene_sets = msigdbr(species = "Mus musculus")
+gene_subcats = sapply(all_gene_sets$gs_name, function(x){
+  out = gsub('_.*', '', x)
+  out = gsub('(GSE).*', '\\1', out)
+}, USE.NAMES = F)
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% c("GSE", "GOBP", "GOMF", "REACTOME", "KEGG", "HALLMARK")),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_endo), function(i){
+  x = topTables_endo[[i]]
+  print(names(topTables_endo)[i])
+  preranked = x %>%
+    mutate_at(2,~replace(., . == 0, min(.[.>0], na.rm = TRUE)*0.1)) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) = names(topTables_endo)
+write_xlsx(fgsea_genelist, 'Figure_ver4_Aug 2023/Figures_Raw/fgsea_genelist_endo_clusters_lung9s3.xlsx')
+```
+
+```{r}
+gsea_reactome = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  x <- x[x$size >= 10,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_reactome, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 60)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+combined_fgsea = bind_rows(combined_fgsea, .id = 'cell_type')
+
+
+plotdat <- combined_fgsea[grep("mitochond|ATP|fatty|oxidative|NADH|TCA|electron|lipid", combined_fgsea$pathway3, ignore.case = T),]
+plotdat$pathway3 <- as.character(plotdat$pathway3)
+pathorder <- c(grep("interleukin|cytokine",unique(plotdat$pathway3), invert = T, value = T, ignore.case = T), grep("interleukin|cytokine",unique(plotdat$pathway3), invert = F, value = T, ignore.case = T))
+plotdat$pathway3 <- factor(plotdat$pathway3, levels = rev(pathorder))
+
+ggplot(plotdat, aes(x = cell_type, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(1, 8), breaks = c(0, 50, 100, 150, 200)) +
+    theme(axis.text.x = element_text(size = 11, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 11),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+
+ggsave('Figure_ver4_Aug 2023/Figures_Raw/GSEA_endo_clusters_merged.pdf', width = 10, height = 18, units = 'in', limitsize = F)
+```
+
+Fig: Metabolic heatmap of glycolysis and OXPHOS
+```{r}
+#pathview for AM and T cells
+
+library(pathview)
+library(biomaRt)
+
+genelist_hip_vs_rv <- lapply(topTables_DE, function(x){
+  out <- ref.genelist(x)
+})
+
+glycolysis_AM <- pathview_meta(gene.data  = genelist_hip_vs_rv$AM, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+glycolysis_AM$celltype <- "AM"
+glycolysis_AM$pathway <- "Glycolysis"
+
+glycolysis_cd4 <- pathview_meta(gene.data  = genelist_hip_vs_rv$`CD4 T Cells`, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+glycolysis_cd4$celltype <- "CD4 T Cells"
+glycolysis_cd4$pathway <- "Glycolysis"
+
+glycolysis_cd8 <- pathview_meta(gene.data  = genelist_hip_vs_rv$`CD8 T Cells`, pathway.id = "mmu00010", species = "mouse",limit = list(gene=1, cpd=1))
+glycolysis_cd8$celltype <- "CD8 T Cells"
+glycolysis_cd8$pathway <- "Glycolysis"
+
+oxphos_AM <- pathview_meta(gene.data  = genelist_hip_vs_rv$AM, pathway.id = "mmu00190", species = "mouse",limit = list(gene=1, cpd=1))
+oxphos_AM$celltype <- "AM"
+oxphos_AM$pathway <- "OXPHOS"
+
+oxphos_cd4 <- pathview_meta(gene.data  = genelist_hip_vs_rv$`CD4 T Cells`, pathway.id = "mmu00190", species = "mouse",limit = list(gene=1, cpd=1))
+oxphos_cd4$celltype <- "CD4 T Cells"
+oxphos_cd4$pathway <- "Oxphos"
+
+oxphos_cd8 <- pathview_meta(gene.data  = genelist_hip_vs_rv$`CD8 T Cells`, pathway.id = "mmu00190", species = "mouse",limit = list(gene=1, cpd=1))
+oxphos_cd8$celltype <- "CD8 T Cells"
+oxphos_cd8$pathway <- "Oxphos"
+
+plotdat <- rbind(glycolysis_AM, oxphos_AM, glycolysis_cd4, oxphos_cd4, glycolysis_cd8, oxphos_cd8)
+plotdat <- plotdat[c("labels", "mol.data", "celltype", "pathway")]
+
+plotdat_glycolysis <- plotdat[plotdat$pathway == "Glycolysis",]
+plotdat_glycolysis$celltype <- factor(plotdat_glycolysis$celltype, levels = unique(plotdat_glycolysis$celltype))
+
+ggplot(plotdat_glycolysis, aes(x = celltype, y = labels)) + geom_tile(aes(fill = mol.data)) + facet_wrap(.~pathway, scales = "free") + scale_fill_gradient2(low = "blue", high = "red", name = "Z-score") + ylab("Genes in Glycolysis pathway") + theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggsave("Figures/Iter3/pathview/glycolysis_heatmap.pdf", width = 3, height = 5, units = "in")
+
+plotdat_oxphos <- plotdat[plotdat$pathway == "OXPHOS",]
+to_remove <- c("ATP12A", "ATP5F1C", "ATP5F1E", "ATP5MF", "ATP5PF", "ATP5PO", "ATP6V0E1", "ATP6V1E1", "ATP6V1G2", "ATP6V1H", "COX11", "COX17", "COX5A", "COX5B", "COX6A1", "ND5", "PPA1", "SDHB", "UQCR10", "UQCR11", "UQCRB")
+plotdat_oxphos <- plotdat_oxphos[!plotdat_oxphos$labels %in% to_remove,]
+plotdat_oxphos$celltype <- factor(plotdat_oxphos$celltype, levels = unique(plotdat_oxphos$celltype))
+plotdat_oxphos$color <- cut(plotdat_oxphos$mol.data, breaks = c(-6, -1, -0.8, -0.6 , -0.4 , -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1, 7))
+col_fun = circlize::colorRamp2(c(-5, 0, 5), c("blue", "white", "red"))
+plotdat_oxphos <- plotdat_oxphos[grep("ndu", plotdat_oxphos$labels, invert = T, ignore.case = T),]
+
+ggplot(plotdat_oxphos, aes(x = celltype, y = labels)) + geom_tile(aes(fill = mol.data)) + facet_wrap(.~pathway, scales = "free") + scale_fill_gradient2(low = "blue", high = "red", name = "Z-score") + ylab("Genes in OXPHOS pathway") + theme(axis.title.x = element_blank(), axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+ggsave("Figures/Iter3/pathview/oxphos_heatmap.pdf", width = 3.5, height = 7, units = "in")
+
+```
+
+# Neutrophil subsets
+```{r}
+neutro <- subset(lung9s3, subset = label.main_new == "Neutrophils")
+
+#redo normalizations and clustering 
+neutro <- FindVariableFeatures(neutro, verbose = F)
+neutro <- ScaleData(neutro, verbose = F)
+neutro <- NormalizeData(neutro,  verbose = F)
+neutro <- RunPCA(neutro, verbose = F, npcs = 20)
+#ElbowPlot(neutro)
+neutro <- RunUMAP(neutro, dims = 1:15, verbose = F)
+neutro <- FindNeighbors(neutro, dims = 1:15)
+neutro <- FindClusters(neutro, resolution = 0.4)
+
+#label neutro subsets
+label.subset <- neutro@meta.data %>%
+  select(seurat_clusters) %>%
+  mutate(label.subset = ifelse(seurat_clusters == 0, "Neutrophil 1", ifelse(seurat_clusters == 1, "Neutrophil 2", ifelse(seurat_clusters == 3, "Neutrophil 3", "Neutrophil 4")))) %>%
+  select(label.subset)
+label.subset$label.subset <- factor(label.subset$label.subset, 
+                                    levels = c("Neutrophil 1", "Neutrophil 2", "Neutrophil 3", "Neutrophil 4"))
+
+neutro <- AddMetaData(neutro, metadata = label.subset)
+
+#saveRDS(neutro,"rds_obs/neutro_seuratobject_Feb102025.rds")
+DimPlot(neutro, group.by = "label.subset", cols = cols[c(1,2,4,5)])
+
+plotdat <- SplitObject(neutro, split.by = "Group")
+
+lapply(seq_along(plotdat), function(i){
+  x <- plotdat[[i]]
+  DimPlot(x, reduction = "umap", group.by = "label.subset", cols = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F, label.size = 3, pt.size = 1.2) + theme(legend.position = "none", plot.title = element_blank())
+  filename <- paste("Figures_ver2/Figure6/umap_", names(plotdat)[i], ".pdf", sep = "") 
+  ggsave(filename, width = 4.5, height = 4, units = "in")
+  return(NULL)
+})
+rm(plotdat)
+```
+
+```{r}
+#heatmap by subset
+Idents(neutro) <- "label.subset"
+topmarkersPercluster <- lapply(unique(neutro$label.subset), function(x){
+  message(paste("running subset:", x, sep = ""))
+  cluster_marker <- FindMarkers(neutro, ident.1 = x, min.pct = 0.1, only.pos = T)
+  cluster_marker <- cluster_marker %>% rownames_to_column("GeneID")
+})
+names(topmarkersPercluster) <- unique(neutro$label.subset)
+#write_xlsx(topmarkersPercluster, "Figures_ver2/Suppliment/neutrophil_seuratcluster_markers.xlsx")
+
+goi <- bind_rows(topmarkersPercluster, .id = "subset") %>%
+  arrange(subset) %>%
+  group_by(subset) %>%
+  top_n(50, avg_log2FC)
+
+DoHeatmap(neutro, features = goi$GeneID)
+```
+
+# Markers that Kit asked to plot
+```{r}
+goi <- c("Ccrl2", "Zfp36", "Nfkbia", "Gadd45b", "Isg15", "S100a8", "S100a9", "Retnlg", "Wfdc21", "Lcn2", "Lyz2", "Ly6a", "Cd36", "Sptbn1", "Crip2", "Prdx1", "Emp2", "mt-Co3", "mt-Atp6", "mt-Nd3", "mt-Nd5", "mt-Nd1", "mt-Nd2", "mt-Nd3", "mt-Nd4", "mt-Co1", "mt-Co2", "mt-Co3", "mt-Cytb")
+
+goi <- c("Cd74", "Vegfa", "Spp1", "Txnip", "Nfkbiz", "Hif1a", "Cxcr2", "Mmp9", "Arg1", "Il1b", "Ifit1", "Isg15", "Mmp8", "Isg15", "Elane", "Ccl4", "Apoe")
+
+lapply(goi, function(x){
+  out <- VlnPlot(neutro, group.by = "label.subset", features = x, pt.size = 0, cols = c("#4038b0", "#ef3b2c", "#662506", "#F0027F")) + theme(legend.position = "none", axis.title.x = element_blank(), axis.title.y = element_blank(), axis.text.x = element_blank())
+  ggsave(paste("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/04. Apr2024-PB/Neutrophil voilin/voilin_", x, ".pdf", sep = ""), out, width = 3, height = 3, units = "in")
+})
+```
+
+```{r}
+goi <- bind_rows(topmarkersPercluster, .id = "cluster") %>%
+  mutate(subset = ifelse(cluster == "Cluster 0", "Neutrophil 1", ifelse(cluster == "Cluster 1", "Neutrophil 2", ifelse(cluster == "Cluster 3", "Neutrophil 3", "Neutrophil 4")))) %>%
+  arrange(subset) %>%
+  group_by(subset) %>%
+  top_n(40, avg_log2FC)
+
+plotdat <- neutro
+Idents(plotdat) <- "label.subset"
+DoHeatmap(plotdat, features = goi$GeneID, group.colors = c("#4038b0", "#ef3b2c", "#662506", "#F0027F", "#33A02C", "#FF7F00", "#666666"), label = F) + theme(axis.text = element_blank())
+ggsave("Figures_ver2/Figure6/subset_heatmap_top40.png", width = 9, height = 6, units = "in")
+
+#Dotplot of selected markers to annotate the subset
+markers <- c("Crip1", "Ptma", "Cd74", "Cd36", "mt-Atp8", "Stfa2l1", "Rpl3")
+
+DotPlot(neutro, features = markers, group.by = "label.subset", scale = F) +
+  xlab("") + ylab("") +
+  scale_color_gradient(high = "red", low = "blue") +
+  scale_size(range = c(1, 7))
+
+ggsave("Figures_ver2/Figure6/doplot_markers.pdf", width = 9, height = 4, units = "in")
+
+#Trajectory
+library(monocle3)
+library(SeuratWrappers)
+neutro_cds <- as.cell_data_set(neutro)
+neutro_cds <- cluster_cells(cds = neutro_cds, reduction_method = "UMAP", 
+                       cluster_method = "louvain", k = 20)
+num_clust <- clusters(neutro_cds)
+table(num_clust)
+neutro_cds <- learn_graph(neutro_cds, use_partition = F)
+
+plot_cells(neutro_cds, color_cells_by = "cluster", label_groups_by_cluster = FALSE,  label_branch_points = F, label_roots = F, label_leaves = F, group_label_size = 5)
+
+#set cluster 8 which containes proliferating cells as the root
+neutro_cds <- order_cells(neutro_cds, reduction_method = "UMAP", root_cells = colnames(neutro_cds[, clusters(neutro_cds) == 3]))
+
+plotdat = neutro_cds[,rownames(neutro@meta.data[neutro@meta.data$Group != "Uninfected",])]
+plotdat@colData$Group <- factor(plotdat@colData$Group, levels = c("Rv", "Hip1"))
+
+plot_cells(cds = plotdat, color_cells_by = "pseudotime", show_trajectory_graph = TRUE, cell_size = 1, trajectory_graph_color = "black", trajectory_graph_segment_size = 1, label_roots = F, label_leaves = F, label_branch_points = F) + facet_wrap(.~Group, nrow = 1, scales = "free")
+
+ggsave("Figures_ver2/Figure6/pseudotime_Hip1_rv.pdf", width = 10, height = 4.5, units = "in")
+rm(plotdat)
+
+##cell frequencies between hip and rv
+NewFreqTable <- data.frame("SampleID" = neutro$SampleID, "label.subset" = neutro$label.subset, "Group" = neutro$Group) %>% 
+  group_by(SampleID, label.subset, Group) %>% 
+  summarise(n_cells = n()) %>% 
+  ungroup() %>% 
+  spread(label.subset, n_cells, fill = 0)
+NewFreqTable <- NewFreqTable[NewFreqTable$Group != "Uninfected",]
+#NewFreqTable <- NewFreqTable[NewFreqTable$SampleID != 7,]
+
+PercTable <- NewFreqTable %>%
+  select(-(Group)) %>%
+  column_to_rownames("SampleID")
+
+PercTable <- apply(PercTable, 1, function(mycols){
+  mysum <- sum(mycols)
+  mycols <- (mycols/mysum)*100
+})
+PercTable <- as.data.frame(t(PercTable)) %>%
+  rownames_to_column("SampleID")
+PercTable <- merge(PercTable, NewFreqTable[,1:2], by = "SampleID")
+
+plotdat <- melt(PercTable, id.vars = c("SampleID", "Group")) %>%
+  group_by(Group, variable) %>%
+  mutate(mean_len = mean(value)) %>%
+  mutate(upper_ci = mean_len + sd(value)/sqrt(length(value)),
+         lower_ci = mean_len - sd(value)/sqrt(length(value)))
+
+plotdat$Group <- factor(plotdat$Group, levels = c("Rv", "Hip1"))
+ggplot(plotdat, aes(x = Group, y = value)) +
+  geom_bar(stat = 'summary', fun= 'mean', position = 'dodge',alpha = 0.7, fill = "#1f78b4", color = "black", width = 0.8) +
+  facet_wrap(.~variable, scales = "free") +
+  geom_errorbar(aes(ymin=lower_ci, ymax=upper_ci), width=.2,
+                 position=position_dodge(.9)) +
+  ylab("Percent of total cells") + xlab("") +
+  theme_Publication() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank())
+
+ggsave("Figures_ver2/Figure6/subset_freq.pdf", width = 5, height = 6, units = "in")
+
+#Degs between subsets for Hip1 vs Rv
+plan('multisession')
+topTables_neutro = sapply(as.character(unique(neutro$label.subset)), 
+                         simplify = F, 
+                         USE.NAMES = T, function(x){
+                           print(x)
+                           subs <- subset(neutro,  
+                                          subset = label.subset ==  x)
+                           Idents(subs) <- "Group"
+                           subs <- subset(subs, subset = Group != "Uninfected")
+                           df <- FindMarkers(subs, ident.1 = "hip1 Mut", 
+                                             ident.2 = "WT Mtb",
+                                             only.pos = F)
+                           df <- rownames_to_column(df, var = 'GeneID')
+                           return(df)
+                         })
+topTables_neutro <- topTables_neutro[c("Neutrophil 1", "Neutrophil 2", "Neutrophil 3", "Neutrophil 4")]
+#saveRDS(topTables_neutro, "rds_obs/topTable_neutro_hip1_vs_WT_Feb2025.rds")
+##gsea
+filtered_gene_sets <- all_gene_sets[which(gene_subcats %in% "KEGG"),]
+
+msigdbr_list = split(x = filtered_gene_sets$gene_symbol, f = filtered_gene_sets$gs_name)
+
+fgsea_genelist = lapply(seq_along(topTables_neutro), function(i){
+  x = topTables_neutro[[i]]
+  print(names(topTables_neutro)[i])
+  preranked = x %>%
+    mutate_at(2,~replace(., . == 0, min(.[.>0], na.rm = TRUE)*0.1)) %>%
+    mutate(logp = -log10(p_val) * sign(avg_log2FC)) %>%
+    #filter(!grepl('Mt-', GeneID)) %>%
+    arrange(logp)
+  rankset = setNames(preranked$logp, preranked$GeneID)
+  fgsea_out = fgsea(pathways = msigdbr_list, stats = rankset)
+  fgsea_out$leadingEdge = sapply(fgsea_out$leadingEdge, function(x){
+    x = paste(x, collapse = ',')
+  })
+  fgsea_out = fgsea_out[order(fgsea_out$padj),]
+  return(fgsea_out)
+})
+names(fgsea_genelist) = names(topTables_neutro)
+#write_xlsx(fgsea_genelist, 'fgsea_reactome_Lung9s2_label_main_01222023.xlsx')
+
+gsea_reactome = lapply(fgsea_genelist, function(x){
+  x = x[x$pval <= 0.05,]
+  new_pathway = sapply(strsplit(x$pathway, split = '_'), function(y){
+    y = y[-1]
+    out = paste(y, collapse = ' ')
+  })
+  x$pathway2 = new_pathway
+  x = x[order(x$NES, decreasing = T),]
+})
+
+#combine cell types
+combined_fgsea = lapply(gsea_reactome, function(x){
+  xlist = x[order(x$NES, decreasing = T),]
+  xlist$pathway3 = gsub('_', ' ', xlist$pathway)
+  xlist$pathway3 = str_wrap(xlist$pathway3, 40)
+  xlist$pathway3 = factor(xlist$pathway3, levels = rev(unique(xlist$pathway3)))
+  xlist$status = cut(xlist$NES, breaks = c(-Inf, 0, Inf), 
+                     labels  = c('Down-reg', 'Up-reg'))
+  return(xlist)
+})
+
+combined_fgsea = bind_rows(combined_fgsea, .id = 'cell_type')
+
+#keep only duplicated entries
+#combined_fgsea = combined_fgsea[combined_fgsea$pathway %in% combined_fgsea$pathway[duplicated(combined_fgsea$pathway)],]
+combined_fgsea$pathway3 = str_to_sentence(combined_fgsea$pathway3)
+
+#keep pathways of interest
+#mitochondrial, atp, interleukin, cytokines, chemokines, tca, ETC, innate, adaptive
+plotdat <- combined_fgsea
+plotdat = combined_fgsea[grep("mitochond|ATP|interleukin|cytokine|chemokine|TCA|electron|innate|adaptive", combined_fgsea$pathway3, ignore.case = T),]
+
+ggplot(plotdat, aes(x = cell_type, y = pathway3, color = NES)) +
+    geom_point(aes(size = size)) +
+    xlab("") +
+    theme_Publication() + 
+    scale_color_gradient2(low = '#2166ac', high = '#b2182b') +
+    scale_size(range = c(1, 10), breaks = c(0, 10, 20, 30, 40, 50)) +
+    theme(axis.text.x = element_text(size = 11, angle = 90, vjust = 0.5, hjust = 1),
+          axis.text.y = element_text(size = 11),
+          axis.title.y = element_blank(),
+          plot.title = element_text(size = 12, face = 'bold', hjust = 0.5,
+                                    vjust = 1),
+          legend.position = 'right',
+          legend.direction = 'vertical')
+ggsave('Figures_ver2/Figure6/neutro_bubble_reactome.pdf', width = 7, height = 9, units = 'in')
+ggsave('Figures_ver2/Figure6/neutro_bubble_kegg.pdf', width = 7, height = 9, units = 'in')
+
+neutro_deg <- bind_rows(topTables_neutro, .id = "subset")
+neutro_deg <- neutro_deg[neutro_deg$p_val < 0.01,]
+#neutro_deg <- neutro_deg[order(neutro_deg$avg_log2FC, decreasing = T),]
+#neutro_deg <- neutro_deg[c(1:10, (nrow(neutro_deg)-9):nrow(neutro_deg)),]
+#plot of genes that are altering 
+plotdat <- subset(neutro, subset = Group != "Uninfected")
+plotdat$Group <- factor(plotdat$Group, levels = c("Rv", "Hip1"))
+
+lapply(c("mt-Atp8", "mt-Nd4l", "mt-Nd3", "mt-Nd4", "mt-Nd5", "Nr4a1", "Cd80"), 
+       function(x){
+         countdata <- FetchData(object = plotdat, slot = "data", vars = x) %>% rownames_to_column("Cell")
+         metadata <- plotdat@meta.data %>% 
+           select(Group, label.subset) %>% rownames_to_column("Cell")
+         metadata <- merge(metadata, countdata, by = "Cell")
+         colnames(metadata)[4] = "Expression"
+         metadata = metadata[metadata$Expression > 0,]
+         ggplot(metadata, aes(x = Group, y = Expression, fill = Group)) + 
+           geom_violin(fill = "white") +
+           geom_jitter(size = 0.5, alpha = 0.5) + 
+           labs(title = x) + facet_wrap(.~label.subset) +
+          stat_summary(fun = "mean", geom='point', size = 10, colour = "red", shape = 95) +
+           stat_compare_means(label = "p.signif", vjust = 1, label.x = 1.4, size = 7, hide.ns = T) +
+           theme_Publication() + 
+           theme(legend.position = "None", 
+                 axis.text.x = element_text(size = 12),
+                 axis.text.y = element_text(size = 12),
+                 axis.title.x = element_blank(),
+                 plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+                 panel.grid.major = element_blank(),
+                 panel.grid.minor = element_blank())
+         ggsave(paste("Figures_ver2/Figure6/vlnplot_", x, ".pdf",sep = ""), width = 7, height = 5, units = "in")
+         return(NULL)
+       })
+```
+
+#psuedobulk heatmap
+```{r}
+goi <- topTables_DE_globalR43_noendo[abs(topTables_DE_globalR43_noendo$avg_log2FC) >= 0.378 & topTables_DE_globalR43_noendo$p_val_adj <= 0.05,]
+goi <- goi$GeneID
+
+plotdat <- DietSeurat(lung9s3)
+plotdat <- subset(plotdat, subset = Group != "Uninfected")
+plotdat <- ScaleData(plotdat, split.by = rownames(data), features = goi)
+mat <- AverageExpression(lung9s3, group.by = "SampleID", return.seurat = F, layer = "counts")[[1]] %>% as.matrix()
+
+mat <- mat[,c(4:9)]
+colnames(mat) <- c("WT Mtb1", "WT Mtb2", "WT Mtb3", "hip Mut1", "hip Mut2", "hip Mut3")
+
+mat <- mat[genes_down$GeneID,]
+mat <- mat[,colnames(mat) %in% c( "WT Mtb1", "WT Mtb2", "WT Mtb3", "hip Mut1", "hip Mut2", "hip Mut3")]
+mat <- t(scale(t(mat)))
+
+col_fun = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324', '#800000', '#aaffc3', '#808080')
+cols <- c('#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#008080', '#e6beff', '#9a6324')
+anno_df <- data.frame(label = colnames(mat), 
+                     Cells = gsub("-.*", "", colnames(mat)),
+                     Group = gsub(".*-", "", colnames(mat)))
+anno_df$Cells <- paste(as.character(rep(1:12, each = 2)), anno_df$Cells, sep = "-")
+#anno_df <- anno_df %>% arrange(cells, desc(group))
+#cluster_anno <- factor(unique(anno_df$cells), levels = unique(anno_df$cells))
+
+anno_df$Cells <- factor(anno_df$Cells, levels = unique(anno_df$Cells))
+anno_df$Group <- factor(anno_df$Group, levels = c("WT Mtb", "hip1 Mut"))
+
+colcells <- cols
+names(colcells) <- unique(anno_df$Cells)
+colcells <- factor(colcells, levels = cols)
+
+
+
+ha = HeatmapAnnotation(df = anno_df[,2:3], col = list(Cells = colcells, Group = c("WT Mtb" = "#808000", "hip1 Mut" = "#000075")), annotation_name_side = "left", annotation_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")))
+
+colnames(mat) <- gsub("-.*", "", colnames(mat))
+
+pdf("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/07. July2024-PB/globalheatmap_down_genes_psuedobulk_zscore.pdf", width = 6, height = 6)
+Heatmap(mat, name = "Expression",  
+        column_split = rep(1:2, each = 3),
+        row_split = NULL,
+        cluster_columns = T,
+        show_column_dend = T,
+        cluster_column_slices = T,
+        column_title_gp = gpar(fontsize = 16),
+        column_gap = unit(1, "mm"),
+        cluster_rows = T,
+        show_row_dend = T,
+        clustering_method_rows = "ward.D2",
+        col = col_fun,
+        row_names_gp = gpar(fontsize = 14),
+        column_title_rot = 0,
+        heatmap_legend_param = list(labels_gp = gpar(fontsize = 14), title_gp = gpar(fontsize = 16, fontface = "bold")),
+        #top_annotation = ha,
+        show_column_names = T,
+        show_row_names = T,
+        use_raster = FALSE,
+        raster_quality = 4)
+dev.off()
+```
+
+# load adata object from python
+```{r}
+library(sceasy)
+library(reticulate)
+
+convertFormat("velocyto_files/lung9s3_adata_aug252024.h5ad", from="anndata", to="seurat", outFile='velocyto_files/lung9s3_adata_aug252024.rds')
+
+lung9s3py <- readRDS("velocyto_files/lung9s3_adata_aug252024.rds")
+```
+
+#leiden UMAP
+```{r}
+myplot <- DimPlot(lung9s3py, group.by = "label_main_new2", cols = cols, pt.size = 0.6)
+myplot[[1]]$layers[[1]]$aes_params$alpha = 0.7
+myplot
+
+ggsave("Manuscript-2024/Figures-2024/PB-Analysis Monthly 2024/08. August2024-PB/Global/UMAP/global_umap_labelmainnew2.pdf", width = 7, height = 6, units = "in")
+```
+
+# Oct9 2025: Make frequency barplot for Kit's flow data
+```{r}
+dat <- read_xlsx("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/Exp 94A Fraction Cluster out of cd45 09182025.xlsx", sheet = 1)
+dat <- dat[!is.na(dat$`Cell Type`),]
+dat$`Freq out of CD45` <- as.numeric(dat$`Freq out of CD45`)
+dat$Group[dat$Group == "hip1"] <- "hip1 Mut"
+dat <- dat %>% group_by(`Cell Type`, Pop, Group) %>% summarise(Freq = sum(`Freq out of CD45`)/5)
+dat$Group <- factor(dat$Group, levels = c("UN", "WT", "hip1 Mut"))
+dat$Pop[dat$Pop == "89"] <- "8,9"
+dat$newgroup <- paste("Pop ", dat$Pop, "-", dat$`Cell Type`, sep = "")
+
+
+ggplot(dat, aes(x = Group, y = Freq, fill = newgroup)) + geom_bar(stat = "identity", position = position_stack(reverse = T)) + scale_fill_manual(values = c("#ff3434", "#ff9a33", "#65ff34", "#336600", "#cc9999", "#9511c8", "#009999", "#f0ef08", "#c5a1ec")) + labs(y = "Frequency out of CD45") + scale_y_continuous(expand = c(0,0), labels = c(0, 25, 50, 75, 100)) + theme_Publication() + theme(axis.title.x = element_blank(), legend.title = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position = "right", legend.direction = "vertical", legend.margin = margin(0,0,0,-10), axis.text = element_text(size = 14), axis.title.y = element_text(size = 15), legend.text = element_text(size = 14))
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/frequency_flow_stacked_bar_flowsum.pdf", width = 6, height = 6, units = "in")
+
+ggplot(dat, aes(x = Group, y = `Freq out of CD45`, fill = newgroup)) + geom_bar(stat = "identity", position = position_fill(reverse = T)) + scale_fill_manual(values = c("#d93729", "#ec1d9f", "#ce21ee", "#5548c9", "#1882d8","#35b39e", "#21ed4e", "#7ad537", "#eae24c")) + labs(y = "Frequency out of CD45") + scale_y_continuous(expand = c(0,0), labels = c(0, 25, 50, 75, 100)) + theme_Publication() + theme(axis.title.x = element_blank(), legend.title = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank(), legend.position = "right", legend.direction = "vertical", legend.margin = margin(0,0,0,-10), axis.text = element_text(size = 14), axis.title.y = element_text(size = 15), legend.text = element_text(size = 14))
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/frequency_flow_stacked_bar_clusterprof.pdf", width = 10, height = 10, units = "in")
+
+test <- dat
+colnames(test) <- c("Celltype", "Pop", "group", "freq", "newgroup")
+ggplot(test, aes(x = group, y = freq, fill = newgroup)) + geom_bar(stat = "identity")
+
+
+```
+
+```{r}
+dat <- data.frame("Uninfected" = rnorm(10), "WT Mtb" = rnorm(10), "hip1 Mut" = rnorm(10))
+dat <- data.frame("WT Mtb" = rnorm(10), "hip1 Mut" = rnorm(10))
+dat <- melt(dat)
+
+p1 <- ggplot(dat,aes(x = variable, y = value, fill = variable)) + geom_bar(stat = "identity") + theme_Publication() + scale_fill_manual(labels = c("Uninfected", "WT Mtb", expression(italic("hip1 Mut"))), values = c("#999999","#298c8c", "#f1a226")) + theme(legend.title = element_blank())
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/legend_3groups_horizontal.pdf", width = 3, height = 1, units = "in")
+
+p1 <- ggplot(dat,aes(x = variable, y = value, fill = variable)) + geom_bar(stat = "identity") + scale_fill_manual(labels = c("WT Mtb", expression(italic("hip1 Mut"))), values = c("#298c8c", "#f1a226")) + theme(legend.title = element_blank(), legend.text = element_text(size = 12))
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/legend_2groups_vertical.pdf", width = 1, height = 1, units = "in")
+
+p1 <- ggplot(dat,aes(x = variable, y = value, fill = variable)) + geom_bar(stat = "identity") + theme_Publication() + scale_fill_manual(labels = c("WT Mtb", expression(italic("hip1 Mut"))), values = c("#298c8c", "#f1a226")) + theme(legend.title = element_blank(), legend.text = element_text(size = 12))
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/legend_2groups_horizontal.pdf", width = 2, height = 0.5, units = "in")
+
+p1 <- ggplot(dat,aes(x = variable, y = value, fill = variable)) + geom_bar(stat = "identity") + scale_fill_manual(labels = c("Uninfected", "WT Mtb", expression(italic("hip1 Mut"))), values = c("#999999","#298c8c", "#f1a226")) + theme(legend.title = element_blank(), legend.text = element_text(size = 12))
+p1 <- get_legend(p1)
+p1 <- as_ggplot(p1)
+p1
+ggsave("Manuscript-2025/Figures-2024/PB-Analysis Monthly 2024/22.Oct2025-PB/legend_3groups_vertical.pdf", width = 1.3, height = 1, units = "in")
+```
+
